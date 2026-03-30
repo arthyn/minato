@@ -1,0 +1,12 @@
+{
+  "name": "minato",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "minato": "./bin/minato.js"
+  },
+  "scripts": {
+    "start": "node ./bin/minato.js",
+    "link": "npm link"
+  }
+}
