@@ -88,6 +88,110 @@ function pickScreenSession(runtime, shortname) {
   return null;
 }
 
+function cmdStart(state, moon) {
+  const runtime = detectRuntime(moon);
+  if (runtime.running) {
+    console.log(`Refusing start: ${moon.shortname} already appears running (2/3 checks).`);
+    return { ok: false, code: 2 };
+  }
+  if (runtime.hasScreen || runtime.hasProc || runtime.hasPierSignal) {
+    console.log(`Ambiguous runtime signals for ${moon.shortname}; refusing risky start.`);
+    console.log('Run: minato inspect <moon> and resolve manually first.');
+    return { ok: false, code: 2 };
+  }
+
+  const pier = resolvePier(moon);
+  if (!pier.ok) {
+    console.log(`Cannot start ${moon.shortname}: ${pier.reason}`);
+    if (pier.candidates?.length) {
+      console.log('Candidates:');
+      for (const c of pier.candidates) console.log(`- ${c}`);
+    }
+    console.log('Set moon.pier_hint in state file for deterministic starts.');
+    return { ok: false, code: 2 };
+  }
+
+  const runPath = path.join(pier.pier, '.run');
+  if (!fs.existsSync(runPath)) {
+    console.log(`Cannot start ${moon.shortname}: missing executable ${runPath}`);
+    return { ok: false, code: 2 };
+  }
+
+  const sessionName = moon.shortname;
+  const startCmd = `screen -dmS ${sessionName} zsh -lc 'cd ${shellEscapeSingle(pier.pier)} && exec ./.run'`;
+  const launched = sh(startCmd);
+  if (!launched.ok) {
+    console.log(`Failed to start ${moon.shortname}`);
+    if (launched.err) console.log(launched.err);
+    return { ok: false, code: 1 };
+  }
+
+  sh('sleep 1');
+  const after = detectRuntime(moon);
+  if (!after.running) {
+    console.log(`Start attempted for ${moon.shortname}, but runtime not confirmed yet.`);
+    console.log('Run: minato inspect <moon> to verify.');
+    moon.state = 'booting';
+  } else {
+    moon.state = 'running';
+    moon.last_seen_running_at = now();
+  }
+  moon.last_booted_at = now();
+  moon.pier_hint = pier.pier;
+  moon.updated_at = now();
+  saveState(state);
+  console.log(`start ok: ${moon.shortname} (${moon.state}) via screen session '${sessionName}'`);
+  return { ok: true, code: 0 };
+}
+
+function cmdStop(state, moon) {
+  const runtime = detectRuntime(moon);
+  if (!runtime.running) {
+    moon.state = 'stopped';
+    moon.updated_at = now();
+    saveState(state);
+    console.log(`Marked stopped: ${moon.shortname} (no live runtime detected).`);
+    return { ok: true, code: 0 };
+  }
+
+  if (!runtime.hasScreen) {
+    console.log(`Refusing stop for ${moon.shortname}: running but no screen session detected.`);
+    console.log('Manual intervention required (no-kill safety policy).');
+    return { ok: false, code: 2 };
+  }
+
+  const session = pickScreenSession(runtime, moon.shortname);
+  if (!session) {
+    console.log(`Refusing stop for ${moon.shortname}: could not resolve screen session name.`);
+    return { ok: false, code: 2 };
+  }
+
+  const sendExit = sh(`screen -S '${shellEscapeSingle(session)}' -p 0 -X stuff $'|exit\\n'`);
+  if (!sendExit.ok) {
+    console.log(`Failed to send |exit to ${session}`);
+    if (sendExit.err) console.log(sendExit.err);
+    return { ok: false, code: 1 };
+  }
+
+  let stopped = false;
+  for (let i = 0; i < 8; i++) {
+    sh('sleep 1');
+    const after = detectRuntime(moon);
+    if (!after.running) { stopped = true; break; }
+  }
+
+  if (!stopped) {
+    console.log(`Graceful stop initiated for ${moon.shortname}, but still appears running.`);
+    console.log('No force-kill performed (policy). Re-run stop or inspect manually.');
+  }
+
+  moon.state = 'stopped';
+  moon.updated_at = now();
+  saveState(state);
+  console.log(`stop ok: ${moon.shortname} (graceful |exit via ${session})`);
+  return { ok: true, code: 0 };
+}
+
 function ensureState() {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   if (!fs.existsSync(STATE_FILE)) {
@@ -226,133 +330,47 @@ async function run(argv) {
     const key = args[0];
     const moon = getMoon(state, key);
     if (!moon) return console.log('Moon not found.');
-    const runtime = detectRuntime(moon);
-
     if (cmd === 'start') {
-      if (runtime.running) {
-        console.log(`Refusing start: ${moon.shortname} already appears running (2/3 checks).`);
-        process.exitCode = 2;
-        return;
-      }
-      if (runtime.hasScreen || runtime.hasProc || runtime.hasPierSignal) {
-        console.log(`Ambiguous runtime signals for ${moon.shortname}; refusing risky start.`);
-        console.log('Run: minato inspect <moon> and resolve manually first.');
-        process.exitCode = 2;
-        return;
-      }
-
-      const pier = resolvePier(moon);
-      if (!pier.ok) {
-        console.log(`Cannot start ${moon.shortname}: ${pier.reason}`);
-        if (pier.candidates?.length) {
-          console.log('Candidates:');
-          for (const c of pier.candidates) console.log(`- ${c}`);
-        }
-        console.log('Set moon.pier_hint in state file for deterministic starts.');
-        process.exitCode = 2;
-        return;
-      }
-
-      const runPath = path.join(pier.pier, '.run');
-      if (!fs.existsSync(runPath)) {
-        console.log(`Cannot start ${moon.shortname}: missing executable ${runPath}`);
-        process.exitCode = 2;
-        return;
-      }
-
-      const sessionName = moon.shortname;
-      const startCmd = `screen -dmS ${sessionName} zsh -lc 'cd ${pier.pier.replace(/'/g, "'\\''")} && exec ./.run'`;
-      const launched = sh(startCmd);
-      if (!launched.ok) {
-        console.log(`Failed to start ${moon.shortname}`);
-        if (launched.err) console.log(launched.err);
-        process.exitCode = 1;
-        return;
-      }
-
-      sh('sleep 1');
-      const after = detectRuntime(moon);
-      if (!after.running) {
-        console.log(`Start attempted for ${moon.shortname}, but runtime not confirmed yet.`);
-        console.log('Run: minato inspect <moon> to verify.');
-        moon.state = 'booting';
-      } else {
-        moon.state = 'running';
-        moon.last_seen_running_at = now();
-      }
-      moon.last_booted_at = now();
-      moon.pier_hint = pier.pier;
-      moon.updated_at = now();
-      saveState(state);
-      console.log(`start ok: ${moon.shortname} (${moon.state}) via screen session '${sessionName}'`);
+      const res = cmdStart(state, moon);
+      if (!res.ok) process.exitCode = res.code;
       return;
     }
 
     if (cmd === 'stop') {
-      if (!runtime.running) {
-        moon.state = 'stopped';
-        moon.updated_at = now();
-        saveState(state);
-        console.log(`Marked stopped: ${moon.shortname} (no live runtime detected).`);
-        return;
-      }
-
-      if (!runtime.hasScreen) {
-        console.log(`Refusing stop for ${moon.shortname}: running but no screen session detected.`);
-        console.log('Manual intervention required (no-kill safety policy).');
-        process.exitCode = 2;
-        return;
-      }
-
-      const session = pickScreenSession(runtime, moon.shortname);
-      if (!session) {
-        console.log(`Refusing stop for ${moon.shortname}: could not resolve screen session name.`);
-        process.exitCode = 2;
-        return;
-      }
-
-      const sendExit = sh(`screen -S '${shellEscapeSingle(session)}' -p 0 -X stuff $'|exit\\n'`);
-      if (!sendExit.ok) {
-        console.log(`Failed to send |exit to ${session}`);
-        if (sendExit.err) console.log(sendExit.err);
-        process.exitCode = 1;
-        return;
-      }
-
-      let stopped = false;
-      for (let i = 0; i < 8; i++) {
-        sh('sleep 1');
-        const after = detectRuntime(moon);
-        if (!after.running) { stopped = true; break; }
-      }
-
-      if (!stopped) {
-        console.log(`Graceful stop initiated for ${moon.shortname}, but still appears running.`);
-        console.log('No force-kill performed (policy). Re-run stop or inspect manually.');
-        moon.state = 'stopped';
-      } else {
-        moon.state = 'stopped';
-      }
-
-      moon.updated_at = now();
-      saveState(state);
-      console.log(`stop ok: ${moon.shortname} (graceful |exit via ${session})`);
+      const res = cmdStop(state, moon);
+      if (!res.ok) process.exitCode = res.code;
       return;
     }
 
     if (cmd === 'restart') {
-      if (runtime.running) {
-        console.log(`Refusing automatic restart for ${moon.shortname} (no auto-kill policy).`);
-        console.log('Manually stop first, then run: minato start <moon>');
+      const before = detectRuntime(moon);
+      if (before.running) {
+        console.log(`restart: stopping ${moon.shortname}...`);
+        const stopRes = cmdStop(state, moon);
+        if (!stopRes.ok) {
+          process.exitCode = stopRes.code;
+          return;
+        }
+      } else {
+        console.log(`restart: ${moon.shortname} already stopped, continuing to start...`);
+      }
+
+      sh('sleep 1');
+      const afterStop = detectRuntime(moon);
+      if (afterStop.running) {
+        console.log(`Refusing restart: ${moon.shortname} still appears running after stop attempt.`);
+        console.log('No force-kill performed (policy).');
         process.exitCode = 2;
         return;
       }
-      moon.state = 'booting';
-      moon.last_booted_at = now();
-      moon.updated_at = now();
-      saveState(state);
-      console.log(`Restart preflight ok for ${moon.shortname}.`);
-      console.log('Runtime boot hook not wired yet (next step).');
+
+      console.log(`restart: starting ${moon.shortname}...`);
+      const startRes = cmdStart(state, moon);
+      if (!startRes.ok) {
+        process.exitCode = startRes.code;
+        return;
+      }
+      console.log(`restart ok: ${moon.shortname}`);
       return;
     }
   }
