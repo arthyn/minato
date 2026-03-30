@@ -20,6 +20,14 @@ function sh(command) {
   };
 }
 
+function shInteractive(command) {
+  const r = spawnSync('zsh', ['-lc', command], { stdio: 'inherit' });
+  return {
+    ok: r.status === 0,
+    code: r.status
+  };
+}
+
 function findCandidatePiers(shortname) {
   if (!fs.existsSync(MOONS_DIR)) return [];
   return fs.readdirSync(MOONS_DIR)
@@ -432,7 +440,35 @@ async function run(argv) {
     const key = args[0];
     const moon = getMoon(state, key);
     if (!moon) return console.log('Moon not found.');
-    console.log(`dojo stub for ${moon.shortname}: will attach to screen safely.`);
+
+    const runtime = detectRuntime(moon);
+    if (!runtime.running) {
+      console.log(`Cannot attach dojo: ${moon.shortname} does not appear to be running.`);
+      process.exitCode = 2;
+      return;
+    }
+    if (!runtime.hasScreen) {
+      console.log(`Cannot attach dojo: runtime exists but no screen session found for ${moon.shortname}.`);
+      console.log('Use minato inspect <moon> and attach manually if needed.');
+      process.exitCode = 2;
+      return;
+    }
+
+    const session = pickScreenSession(runtime, moon.shortname);
+    if (!session) {
+      console.log(`Cannot attach dojo: could not resolve screen session for ${moon.shortname}.`);
+      process.exitCode = 2;
+      return;
+    }
+
+    console.log(`Attaching to dojo for ${moon.shortname} via screen session '${session}'...`);
+    console.log('Detach safely with Ctrl-a d');
+    const attached = shInteractive(`screen -r '${shellEscapeSingle(session)}'`);
+    if (!attached.ok) {
+      console.log('Screen attach failed.');
+      process.exitCode = attached.code || 1;
+      return;
+    }
     return;
   }
 

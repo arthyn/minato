@@ -24,7 +24,7 @@ minato
 - `minato update [moon|--all]` (stub)
 - `minato doctor [moon]` (basic checks)
 - `minato sync [moon|--all]` (stub)
-- `minato dojo <moon>` (stub)
+- `minato dojo <moon>` attaches to running moon screen session (detach: `Ctrl-a d`)
 
 State file:
 
