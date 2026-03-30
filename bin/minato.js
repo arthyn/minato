@@ -27,6 +27,20 @@ function findCandidatePiers(shortname) {
     .map(d => path.join(MOONS_DIR, d));
 }
 
+function resolvePier(moon) {
+  if (moon.pier_hint && fs.existsSync(moon.pier_hint)) {
+    return { ok: true, pier: moon.pier_hint, source: 'hint' };
+  }
+  const candidates = findCandidatePiers(moon.shortname);
+  if (candidates.length === 1) {
+    return { ok: true, pier: candidates[0], source: 'auto' };
+  }
+  if (candidates.length === 0) {
+    return { ok: false, reason: 'no-pier-found', candidates: [] };
+  }
+  return { ok: false, reason: 'multiple-piers-found', candidates };
+}
+
 function detectRuntime(moon) {
   const short = moon.shortname;
   const screen = sh(`screen -ls | grep -i '\\.${short}$' || true`);
@@ -211,11 +225,51 @@ async function run(argv) {
         process.exitCode = 2;
         return;
       }
-      moon.state = 'booting';
+
+      const pier = resolvePier(moon);
+      if (!pier.ok) {
+        console.log(`Cannot start ${moon.shortname}: ${pier.reason}`);
+        if (pier.candidates?.length) {
+          console.log('Candidates:');
+          for (const c of pier.candidates) console.log(`- ${c}`);
+        }
+        console.log('Set moon.pier_hint in state file for deterministic starts.');
+        process.exitCode = 2;
+        return;
+      }
+
+      const runPath = path.join(pier.pier, '.run');
+      if (!fs.existsSync(runPath)) {
+        console.log(`Cannot start ${moon.shortname}: missing executable ${runPath}`);
+        process.exitCode = 2;
+        return;
+      }
+
+      const sessionName = moon.shortname;
+      const startCmd = `screen -dmS ${sessionName} zsh -lc 'cd ${pier.pier.replace(/'/g, "'\\''")} && exec ./.run'`;
+      const launched = sh(startCmd);
+      if (!launched.ok) {
+        console.log(`Failed to start ${moon.shortname}`);
+        if (launched.err) console.log(launched.err);
+        process.exitCode = 1;
+        return;
+      }
+
+      sh('sleep 1');
+      const after = detectRuntime(moon);
+      if (!after.running) {
+        console.log(`Start attempted for ${moon.shortname}, but runtime not confirmed yet.`);
+        console.log('Run: minato inspect <moon> to verify.');
+        moon.state = 'booting';
+      } else {
+        moon.state = 'running';
+        moon.last_seen_running_at = now();
+      }
+      moon.last_booted_at = now();
+      moon.pier_hint = pier.pier;
       moon.updated_at = now();
       saveState(state);
-      console.log(`Start preflight ok for ${moon.shortname}.`);
-      console.log('Runtime boot hook not wired yet (will start via managed screen in next step).');
+      console.log(`start ok: ${moon.shortname} (${moon.state}) via screen session '${sessionName}'`);
       return;
     }
 
