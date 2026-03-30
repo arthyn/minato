@@ -17,7 +17,8 @@ minato
 - `minato list`
 - `minato inspect <moon>`
 - `minato start|stop|restart <moon>` with safety preflight (3-signal runtime checks)
-  - `start` now launches `pier/.run` in detached `screen` when preflight is clean
+  - `start` launches `pier/.run` in detached `screen` when preflight is clean
+  - `stop` sends graceful `|exit` via `screen` (never force-kills)
 - `minato swap <moon> [workspace]`
 - `minato update [moon|--all]` (stub)
 - `minato doctor [moon]` (basic checks)

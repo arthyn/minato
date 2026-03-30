@@ -41,6 +41,10 @@ function resolvePier(moon) {
   return { ok: false, reason: 'multiple-piers-found', candidates };
 }
 
+function shellEscapeSingle(s) {
+  return String(s).replace(/'/g, `'\\''`);
+}
+
 function detectRuntime(moon) {
   const short = moon.shortname;
   const screen = sh(`screen -ls | grep -i '\\.${short}$' || true`);
@@ -71,6 +75,17 @@ function detectRuntime(moon) {
     procLines: proc.out ? proc.out.split('\n') : [],
     pierChecks
   };
+}
+
+function pickScreenSession(runtime, shortname) {
+  const lines = runtime.screenLines || [];
+  for (const line of lines) {
+    const m = line.match(/\t([^\s]+)\s*\(/);
+    if (!m) continue;
+    const session = m[1];
+    if (session.endsWith(`.${shortname}`)) return session;
+  }
+  return null;
 }
 
 function ensureState() {
@@ -281,9 +296,47 @@ async function run(argv) {
         console.log(`Marked stopped: ${moon.shortname} (no live runtime detected).`);
         return;
       }
-      console.log(`Refusing automatic stop for ${moon.shortname} (safety rule).`);
-      console.log('Use manual dojo/screen shutdown, then run: minato sync <moon>');
-      process.exitCode = 2;
+
+      if (!runtime.hasScreen) {
+        console.log(`Refusing stop for ${moon.shortname}: running but no screen session detected.`);
+        console.log('Manual intervention required (no-kill safety policy).');
+        process.exitCode = 2;
+        return;
+      }
+
+      const session = pickScreenSession(runtime, moon.shortname);
+      if (!session) {
+        console.log(`Refusing stop for ${moon.shortname}: could not resolve screen session name.`);
+        process.exitCode = 2;
+        return;
+      }
+
+      const sendExit = sh(`screen -S '${shellEscapeSingle(session)}' -p 0 -X stuff $'|exit\\n'`);
+      if (!sendExit.ok) {
+        console.log(`Failed to send |exit to ${session}`);
+        if (sendExit.err) console.log(sendExit.err);
+        process.exitCode = 1;
+        return;
+      }
+
+      let stopped = false;
+      for (let i = 0; i < 8; i++) {
+        sh('sleep 1');
+        const after = detectRuntime(moon);
+        if (!after.running) { stopped = true; break; }
+      }
+
+      if (!stopped) {
+        console.log(`Graceful stop initiated for ${moon.shortname}, but still appears running.`);
+        console.log('No force-kill performed (policy). Re-run stop or inspect manually.');
+        moon.state = 'stopped';
+      } else {
+        moon.state = 'stopped';
+      }
+
+      moon.updated_at = now();
+      saveState(state);
+      console.log(`stop ok: ${moon.shortname} (graceful |exit via ${session})`);
       return;
     }
 
