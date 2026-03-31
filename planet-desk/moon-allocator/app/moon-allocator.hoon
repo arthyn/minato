@@ -2,7 +2,7 @@
 |%
 +$  shortname  @tas
 +$  alloc-id   @ud
-+
+
 +$  allocation
   $:  id=alloc-id
       short=shortname
@@ -12,23 +12,24 @@
       issuer=@p
       note=(unit @t)
   ==
-+
+
 +$  state-0
   $:  next-id=alloc-id
       by-short=(map shortname allocation)
       events=(list allocation)
   ==
-+
+
 +$  versioned-state
   $%  [%0 state-0]
   ==
-+
+
 +$  action
   $%  [%ensure short=shortname]
       [%allocate short=shortname]
       [%set-note short=shortname note=@t]
+      [%ingest short=shortname moon=@p ticket=@t]
   ==
-+
+
 +$  result
   $%  [%ok allocation]
       [%err code=@tas msg=@t]
@@ -42,15 +43,19 @@
 ::
 ++  on-init
   ^-  (quip card _this)
-  `this(state [%0 next-id=1 by-short=~(mop by *(map shortname allocation)) events=~])
+  =/  empty-map  (~(gas by *(map shortname allocation)) ~)
+  `this(state [next-id=1 by-short=empty-map events=~])
 ::
-++  on-save   on-save:def
+++  on-save
+  ^-  vase
+  !>([%0 state]:versioned-state)
+::
 ++  on-load
   |=  old=vase
   ^-  (quip card _this)
   =/  v  !<(versioned-state old)
   ?-  -.v
-    %0  `this(state v)
+    %0  `this(state p.v)
   ==
 ::
 ++  is-trusted
@@ -61,15 +66,9 @@
 ++  valid-short
   |=  s=shortname
   ^-  ?
-  ?&  ?>(?=(%tas -.!>(s)) %.y)
-      (gte (met 3 s) 2)
+  ?&  (gte (met 3 s) 2)
       (lte (met 3 s) 20)
   ==
-::
-++  alloc-to-result
-  |=  a=allocation
-  ^-  vase
-  !>([%ok a]:result)
 ::
 ++  err-result
   |=  [code=@tas msg=@t]
@@ -77,9 +76,10 @@
   !>([%err code msg]:result)
 ::
 ++  do-allocate
-  |=  short=shortname
+  |=  [id=alloc-id short=shortname]
   ^-  (unit allocation)
   :: TODO: wire real moon allocator authority call.
+  :: Returning ~ makes %ensure/%allocate report alloc-unimplemented.
   ~
 ::
 ++  on-poke
@@ -96,15 +96,39 @@
             :_  this
             :~  [%give %fact ~ %noun (err-result %not-found 'unknown shortname')]
             ==
-          =/  upd  cur(note [~ note.act])
+          =/  upd  u.cur(note [~ note.act])
           =.  by-short.state  (~(put by-short state) short.act upd)
           :_  this
           :~  [%give %fact ~ %noun !>([%ok upd]:result)]
           ==
+
+        %ingest
+          ?>  (valid-short short.act)
+          =/  cur  (~(get by-short state) short.act)
+          ?~  cur
+            =/  made
+              [ id=next-id.state
+                short=short.act
+                moon=moon.act
+                ticket=ticket.act
+                issued=now.bowl
+                issuer=src.bowl
+                note=~
+              ]
+            =.  by-short.state  (~(put by-short state) short.act made)
+            =.  events.state  [made events.state]
+            =.  next-id.state  +(next-id.state)
+            :_  this
+            :~  [%give %fact ~ %noun !>([%ok made]:result)]
+            ==
+          :_  this
+          :~  [%give %fact ~ %noun (err-result %already-exists 'shortname already allocated')]
+          ==
+
         %allocate
           =/  cur  (~(get by-short state) short.act)
           ?~  cur
-            =/  made  (do-allocate short.act)
+            =/  made  (do-allocate next-id.state short.act)
             ?~  made
               :_  this
               :~  [%give %fact ~ %noun (err-result %alloc-unimplemented 'allocator hook not wired yet')]
@@ -118,10 +142,11 @@
           :_  this
           :~  [%give %fact ~ %noun (err-result %already-exists 'shortname already allocated')]
           ==
+
         %ensure
           =/  cur  (~(get by-short state) short.act)
           ?~  cur
-            =/  made  (do-allocate short.act)
+            =/  made  (do-allocate next-id.state short.act)
             ?~  made
               :_  this
               :~  [%give %fact ~ %noun (err-result %alloc-unimplemented 'allocator hook not wired yet')]

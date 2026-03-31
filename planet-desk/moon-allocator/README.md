@@ -15,6 +15,7 @@ This is **scaffold code**:
 - trusted source checks (`src.bowl == our.bowl`)
 - scry export/list/get paths
 - allocation execution is still a TODO hook (`alloc-unimplemented`)
+- temporary `%ingest` action for manually recording `[short moon ticket]` while real allocator hook is being wired
 
 ## Files
 
@@ -44,6 +45,7 @@ Pokes (`%noun`):
 - `[%ensure short=@tas]`
 - `[%allocate short=@tas]`
 - `[%set-note short=@tas note=@t]`
+- `[%ingest short=@tas moon=@p ticket=@t]` (temporary bootstrap path)
 
 Facts emitted (`%noun`):
 
@@ -59,3 +61,8 @@ Scries:
 ## Next implementation step
 
 Wire `++do-allocate` to a real allocator thread/bridge that can produce `(moon_ship, ticket)` from planet authority.
+
+Planned bridge shape:
+- `%moon-allocator` starts a controlled thread (`/ted/moon-allocator/allocate`) with `shortname`
+- thread performs authority action and returns `(unit [moon=@p ticket=@t])`
+- agent stores the allocation and emits `%ok` fact
