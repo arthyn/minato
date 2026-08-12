@@ -1,0 +1,26 @@
+{
+  "name": "minato",
+  "version": "0.1.0",
+  "description": "Lifecycle and MCP-wiring manager for local Urbit moons",
+  "license": "MIT",
+  "author": "Hunter Miller",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arthyn/minato.git"
+  },
+  "keywords": ["urbit", "moons", "cli", "mcp", "agents"],
+  "type": "module",
+  "bin": {
+    "minato": "./bin/minato"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "5.9"
+  }
+}

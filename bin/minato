@@ -1,0 +1,40 @@
+#!/bin/sh
+# Launcher for minato. Resolves its own location through any symlinks, so it
+# can be linked onto PATH from anywhere, and picks a Node new enough for native
+# TypeScript type stripping (>= 22.18) — there is no build step, so an older
+# Node would fail with a syntax error rather than a useful message.
+SELF=$0
+while [ -L "$SELF" ]; do
+  link=$(readlink "$SELF")
+  case $link in
+    /*) SELF=$link ;;
+    *) SELF=$(dirname "$SELF")/$link ;;
+  esac
+done
+DIR=$(cd "$(dirname "$SELF")/.." && pwd)
+
+supports_ts() {
+  "$1" -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=18)?0:1)' 2>/dev/null
+}
+
+NODE=
+# Real binaries are tried before the PATH lookup on purpose. `node` on PATH is
+# an asdf shim here, and shims need to write temp files — which agent sandboxes
+# deny, making the probe fail or hang. Absolute paths keep the common case from
+# ever touching it; the shim stays as a last resort.
+for candidate in "$MINATO_NODE" /opt/homebrew/bin/node /usr/local/bin/node node; do
+  [ -n "$candidate" ] || continue
+  resolved=$(command -v "$candidate" 2>/dev/null) || continue
+  if supports_ts "$resolved"; then
+    NODE=$resolved
+    break
+  fi
+done
+
+if [ -z "$NODE" ]; then
+  echo "minato: requires Node >= 22.18 for native TypeScript support." >&2
+  echo "        none found on PATH; set MINATO_NODE to a suitable binary." >&2
+  exit 2
+fi
+
+exec "$NODE" "$DIR/src/cli.ts" "$@"

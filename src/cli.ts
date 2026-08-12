@@ -1,0 +1,190 @@
+#!/usr/bin/env node
+import { parseArgs } from 'node:util';
+import { listCommand } from './commands/list.ts';
+import { doctorCommand } from './commands/doctor.ts';
+import { startCommand, EXIT_OK, EXIT_VALIDATION } from './commands/start.ts';
+import { stopCommand } from './commands/stop.ts';
+import { mcpStatusCommand, mcpSyncCommand } from './commands/mcpSync.ts';
+import { loadConfig, loadState, saveState, setMeta } from './config.ts';
+import { readAllPiers, resolvePier } from './discover.ts';
+import { color, humanAge, humanBytes } from './ui.ts';
+
+const USAGE = `minato — lifecycle and MCP wiring for local Urbit moons
+
+usage
+  minato list [--state <s>] [--size] [--all] [--json]
+  minato inspect <moon>
+  minato doctor [moon] [--json]
+  minato name <moon|pier-path> <shortname>
+  minato start <moon> [--port <n>] [--yes]
+  minato stop <moon> [--yes] [--timeout <s>]
+  minato restart <moon> [--port <n>] [--yes]
+  minato mcp status [--json]
+  minato mcp sync [--dry-run] [--yes]
+
+<moon> is a shortname, ship name, or pier path.
+
+exit codes
+  0 ok   2 bad input   4 safety refusal   5 operation failed
+`;
+
+const OPTIONS = {
+  state: { type: 'string' },
+  port: { type: 'string' },
+  timeout: { type: 'string' },
+  size: { type: 'boolean' },
+  all: { type: 'boolean' },
+  json: { type: 'boolean' },
+  yes: { type: 'boolean', short: 'y' },
+  'dry-run': { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+} as const;
+
+async function inspectCommand(moon: string): Promise<number> {
+  const config = loadConfig();
+  const piers = readAllPiers(config, loadState(), { withSize: true });
+  const pier = resolvePier(piers, moon);
+
+  const field = (label: string, value: string): void => {
+    process.stdout.write(`  ${color('dim', label.padEnd(12))}${value}\n`);
+  };
+  process.stdout.write(`${color('bold', `~${pier.ship}`)}\n`);
+  field('shortname', pier.shortname);
+  field('state', pier.state);
+  field('path', pier.path);
+  field('vere', pier.vere ?? 'unknown');
+  field('ports', pier.ports.public ? `${pier.ports.public} public, ${pier.ports.loopback ?? '?'} loopback` : '-');
+  field('pids', pier.pids.length ? pier.pids.join(', ') : '-');
+  field('activity', humanAge(pier.lastActivity));
+  field('size', humanBytes(pier.sizeBytes));
+  if (pier.issues.length) {
+    process.stdout.write(`\n${color('bold', 'issues')}\n`);
+    for (const issue of pier.issues) {
+      const tag = issue.level === 'error' ? color('red', 'error') : color('yellow', ' warn');
+      process.stdout.write(`  ${tag}  ${issue.message}\n`);
+      if (issue.fix) process.stdout.write(`         ${color('dim', `fix: ${issue.fix}`)}\n`);
+    }
+  }
+  return EXIT_OK;
+}
+
+async function nameCommand(moon: string, shortname: string): Promise<number> {
+  const config = loadConfig();
+  const state = loadState();
+  const piers = readAllPiers(config, state);
+  const pier = resolvePier(piers, moon);
+
+  const taken = piers.find(
+    (p) => p.path !== pier.path && p.shortname.toLowerCase() === shortname.toLowerCase(),
+  );
+  if (taken) {
+    process.stderr.write(`shortname "${shortname}" is already used by ${taken.path}\n`);
+    return EXIT_VALIDATION;
+  }
+
+  setMeta(state, pier.path, { shortname });
+  saveState(state);
+  process.stdout.write(`${pier.path} is now ${color('bold', shortname)}\n`);
+  return EXIT_OK;
+}
+
+async function main(): Promise<number> {
+  let parsed: ReturnType<typeof parseArgs<{ options: typeof OPTIONS; allowPositionals: true }>>;
+  try {
+    parsed = parseArgs({ options: OPTIONS, allowPositionals: true });
+  } catch (err) {
+    process.stderr.write(`${(err as Error).message}\n\n${USAGE}`);
+    return EXIT_VALIDATION;
+  }
+  const { values, positionals } = parsed;
+  const [command, ...rest] = positionals;
+
+  if (values.help || !command) {
+    process.stdout.write(USAGE);
+    return EXIT_OK;
+  }
+
+  const port = values.port ? Number(values.port) : undefined;
+  if (values.port && !Number.isInteger(port)) {
+    process.stderr.write(`invalid --port: ${values.port}\n`);
+    return EXIT_VALIDATION;
+  }
+
+  switch (command) {
+    case 'list':
+    case 'ls':
+      return listCommand({ state: values.state, json: values.json, size: values.size, all: values.all });
+
+    case 'inspect':
+      if (!rest[0]) {
+        process.stderr.write('inspect requires a moon\n');
+        return EXIT_VALIDATION;
+      }
+      return inspectCommand(rest[0]);
+
+    case 'doctor':
+      return doctorCommand({ moon: rest[0], json: values.json });
+
+    case 'name':
+      if (!rest[0] || !rest[1]) {
+        process.stderr.write('name requires a moon and a shortname\n');
+        return EXIT_VALIDATION;
+      }
+      return nameCommand(rest[0], rest[1]);
+
+    case 'start':
+      if (!rest[0]) {
+        process.stderr.write('start requires a moon\n');
+        return EXIT_VALIDATION;
+      }
+      return startCommand({ moon: rest[0], port, yes: values.yes, json: values.json });
+
+    case 'stop':
+      if (!rest[0]) {
+        process.stderr.write('stop requires a moon\n');
+        return EXIT_VALIDATION;
+      }
+      return stopCommand({
+        moon: rest[0],
+        yes: values.yes,
+        timeout: values.timeout ? Number(values.timeout) : undefined,
+      });
+
+    case 'restart': {
+      if (!rest[0]) {
+        process.stderr.write('restart requires a moon\n');
+        return EXIT_VALIDATION;
+      }
+      const stopped = await stopCommand({
+        moon: rest[0],
+        yes: values.yes,
+        timeout: values.timeout ? Number(values.timeout) : undefined,
+      });
+      // Only boot again if the ship is confirmed down; otherwise this would be
+      // the double-boot the safety rules exist to prevent.
+      if (stopped !== EXIT_OK) return stopped;
+      return startCommand({ moon: rest[0], port, yes: true, json: values.json });
+    }
+
+    case 'mcp': {
+      const sub = rest[0] ?? 'status';
+      if (sub === 'sync') {
+        return mcpSyncCommand({ dryRun: values['dry-run'], yes: values.yes, json: values.json });
+      }
+      if (sub === 'status') return mcpStatusCommand({ json: values.json });
+      process.stderr.write(`unknown mcp subcommand: ${sub}\n`);
+      return EXIT_VALIDATION;
+    }
+
+    default:
+      process.stderr.write(`unknown command: ${command}\n\n${USAGE}`);
+      return EXIT_VALIDATION;
+  }
+}
+
+main()
+  .then((code) => process.exit(code))
+  .catch((err: Error) => {
+    process.stderr.write(`${color('red', 'error')} ${err.message}\n`);
+    process.exit(EXIT_VALIDATION);
+  });
