@@ -135,9 +135,20 @@ The guide teaches agents the operational rules — never restart a ship you did 
 - `~/.minato/config.json` — scan roots, scan depth, staleness threshold (default 14 days), agent config paths.
 - `~/.minato/state.json` — per-pier metadata, **keyed by pier path**, not ship name: several piers can share a name (fakezods especially), so the name is not a unique key.
 
+## Moon creation (not wired up yet)
+
+`minato new` — allocating a moon identity from a parent planet — is the one part of the original design still unimplemented on the CLI side. The ship half of it exists already:
+
+- `planet-desk/moon-allocator/` — a Gall agent that mints moon tickets and keeps an append-only allocation ledger, with versioned state and idempotency by shortname.
+- `docs/moon-allocator-protocol.md` — the planet ↔ minato contract it implements.
+
+What is missing is the CLI end: calling the allocator, booting the returned ticket, and recording the result. Until then, create moons by hand and let `minato` track them.
+
 ## Status
 
 Works, and used daily against a couple dozen piers. No test suite yet; `AGENTS.md` documents the manual verification paths that cannot disturb a running ship. macOS only so far — the pier and process logic is not deeply platform-specific, but nothing has been verified on Linux.
+
+An earlier v0 scaffold (March 2026) drove ships through `screen`. That approach was abandoned because ships in practice run as bare detached `.run` processes with no `screen` involved, which made every liveness check unreliable. It remains in the git history.
 
 ## License
 

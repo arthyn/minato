@@ -29,6 +29,9 @@ node src/cli.ts list            # or ./bin/minato, or just `minato` once install
 | `src/mcp.ts` | audit and sync, format-agnostic |
 | `src/config.ts` | `~/.minato/config.json` and `state.json` |
 | `src/commands/` | one file per command |
+| `skill/SKILL.md` | the agent-facing usage guide, installed into Claude Code and Codex |
+| `planet-desk/` | Gall agent that mints moon tickets — the ship half of the unbuilt `new` |
+| `docs/` | the planet ↔ minato allocator protocol |
 
 ## Environment facts this code depends on
 
