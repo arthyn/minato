@@ -112,6 +112,29 @@ Degraded runs print `LIVENESS INFERRED`, mark confirmed ships `running*`, and sw
 
 Remote endpoints are ignored entirely; minato only claims local moons.
 
+## Archived piers (never boot)
+
+A pier that is a copy of a ship whose live instance runs somewhere else must never be booted: two instances of the same ship on the network can corrupt the live one. Mark those piers as archived.
+
+```sh
+minato archive <moon> --note "copy of the hosted planet"
+minato unarchive <moon>     # deliberate, prompts with the risk
+```
+
+`start`, `stop`, and `restart` all refuse for an archived pier with exit 4, and **`--yes` does not override it** — the only way through is `unarchive`.
+
+`doctor` finds these for you. A ship reached at a **remote** address by one of your agent configs, which also has a pier on this machine, is reported as an `ARCHIVE RISK` error:
+
+```
+ARCHIVE RISK
+  error  ~sampel-palnet runs remotely, but a local pier exists
+    /Users/you/sampel-palnet
+    booting it would put a second instance of a live ship on the network
+    fix: minato archive sampel
+```
+
+Ship names come from the `urbauth-~<ship>` cookie on remote MCP entries, so this works without any extra configuration.
+
 ## Safety
 
 Enforced in code rather than by convention:

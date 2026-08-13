@@ -56,6 +56,7 @@ Established by measurement against real piers, and several contradict what the d
 - **Live state beats metadata**, always, for anything safety-critical.
 - **Never escalate to SIGKILL.** `stop` sends SIGTERM, waits, and reports.
 - **Never act on an `ambiguous` pier.** Refuse with exit 4.
+- **`archived` is a hard block with no override.** Not `--yes`, not `--force`. These piers are typically copies of a ship running elsewhere, and booting one can corrupt the live ship — a data-loss class of bug, unlike the recoverable ones. Only `unarchive` clears it, and that prompts with the risk.
 - **`mcp sync` rewrites ports only.** Auth headers, API keys and cookies are preserved verbatim — minato cannot mint `%mcp` keys. Back up before writing.
 - The Codex TOML adapter is a **scanner, not a parser**, so the user's comments and formatting survive. Keep edits surgical and range-based.
 - **Secrets never reach argv or logs.** The `+code` is read without echo and sent in a form body; the moon key goes to a `0600` file in a private temp dir, is passed to vere by path, and is removed in a `finally`. Session cookies are cached `0600`. Do not print, log, or pass any of these as arguments.

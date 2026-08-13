@@ -1,6 +1,7 @@
 import { loadConfig, loadState } from '../config.ts';
 import { livenessDegraded, livenessUnknown, readAllPiers, resolvePier } from '../discover.ts';
 import { auditMcp, type McpEntry } from '../mcp.ts';
+import { remoteShips } from '../agents.ts';
 import { color } from '../ui.ts';
 
 export interface DoctorOptions {
@@ -65,6 +66,25 @@ export async function doctorCommand(opts: DoctorOptions): Promise<number> {
   }
 
   let problems = 0;
+
+  // A local pier for a ship an agent config reaches remotely is almost always
+  // an archive. Booting it would run a second instance of a live ship, so this
+  // is reported as an error and not merely a warning.
+  const remote = remoteShips(config.agentConfigs);
+  const twins = piers.filter((p) => !p.archived && remote.has(p.ship));
+  if (twins.length > 0) {
+    process.stdout.write(`${color('bold', 'ARCHIVE RISK')}\n`);
+    for (const pier of twins) {
+      problems += 1;
+      process.stdout.write(
+        `  ${color('red', 'error')}  ~${pier.ship} runs remotely, but a local pier exists\n` +
+          `    ${color('dim', pier.path)}\n` +
+          `    ${color('dim', 'booting it would put a second instance of a live ship on the network')}\n` +
+          `    ${color('dim', `fix: minato archive ${pier.shortname}`)}\n`,
+      );
+    }
+    process.stdout.write('\n');
+  }
 
   // Shortnames must be globally unique (spec §12.5) — every shorthand command
   // resolves through them, so a collision makes those piers unaddressable.

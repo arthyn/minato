@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig, loadState, saveConfig, saveState, setMeta } from '../config.ts';
 import { findPierPaths, readAllPiers, readPier } from '../discover.ts';
 import { checkPort, processTable } from '../live.ts';
-import { resolveEndpoint, runThread, shipRank } from '../eyre.ts';
+import { readSecret, resolveEndpoint, runThread, shipRank } from '../eyre.ts';
+import type { Config, State } from '../types.ts';
 import { resolveVere } from '../vere.ts';
 import { color, confirm } from '../ui.ts';
 import { EXIT_FAILED, EXIT_OK, EXIT_SAFETY, EXIT_VALIDATION } from './start.ts';
@@ -20,6 +21,9 @@ export interface NewOptions {
   dryRun?: boolean;
   yes?: boolean;
   json?: boolean;
+  /** Adopt a moon already minted by `|moon`, rather than running the thread. */
+  ship?: string;
+  keyFile?: string;
 }
 
 interface GenMoonResult {
@@ -32,6 +36,19 @@ const POLL_MS = 2_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Read a moon's private key.
+ *
+ * There is deliberately no `--key` flag: anything in argv is visible to every
+ * process on the machine via `ps`. The key arrives from a file, from stdin when
+ * piped, or from an echo-less prompt.
+ */
+async function readMoonKey(keyFile?: string): Promise<string> {
+  if (keyFile) return readFileSync(keyFile, 'utf8').trim();
+  if (!process.stdin.isTTY) return readFileSync(0, 'utf8').trim();
+  return (await readSecret('moon key (0w…, not echoed): ')).trim();
 }
 
 /** First free port at or above `from`, skipping anything already bound. */
@@ -58,6 +75,31 @@ export async function newCommand(opts: NewOptions): Promise<number> {
       process.stderr.write(`shortname "${opts.shortname}" is already used by ${taken.path}\n`);
       return EXIT_VALIDATION;
     }
+  }
+
+  // ---- adopt a moon minted by `|moon` in the parent's dojo ----
+  //
+  // `|moon` slogs the name and key to the ship's own terminal rather than
+  // returning them, so there is no way to collect them over the network. When
+  // the parent has no gen-moon thread, running it by hand and handing the
+  // output here is the whole workflow.
+  if (opts.ship) {
+    const moon = opts.ship.replace(/^~/, '');
+    if (!/^[a-z]+(-[a-z]+)*$/.test(moon)) {
+      process.stderr.write(`invalid ship "${opts.ship}"\n`);
+      return EXIT_VALIDATION;
+    }
+    if (shipRank(moon) !== 'moon') {
+      process.stderr.write(`~${moon} is a ${shipRank(moon)}, not a moon\n`);
+      return EXIT_VALIDATION;
+    }
+
+    const key = await readMoonKey(opts.keyFile);
+    if (!key.startsWith('0w')) {
+      process.stderr.write('that does not look like a moon key (expected it to start with 0w)\n');
+      return EXIT_VALIDATION;
+    }
+    return bootMoon({ moon, key, config, state, opts });
   }
 
   const planet = opts.planet ?? config.planet;
@@ -131,15 +173,33 @@ export async function newCommand(opts: NewOptions): Promise<number> {
     return EXIT_FAILED;
   }
 
-  const pierPath = join(parentDir, moon);
   process.stdout.write(`${color('green', 'minted')} ~${moon}\n`);
+  return bootMoon({ moon, key: result.key, config, state, opts });
+}
+
+interface BootArgs {
+  moon: string;
+  key: string;
+  config: Config;
+  state: State;
+  opts: NewOptions;
+}
+
+/**
+ * Boot a freshly-issued moon into a new pier and record it. Shared by both
+ * paths, since minting and adopting differ only in where the key came from.
+ */
+async function bootMoon({ moon, key, config, state, opts }: BootArgs): Promise<number> {
+  const parentDir = opts.dir ?? config.roots[0] ?? homedir();
+  const port = opts.port ?? (await pickPort(8080));
+  const pierPath = join(parentDir, moon);
 
   if (existsSync(pierPath)) {
-    // The moon exists on the parent now, so say plainly what was created even
-    // though the boot cannot proceed.
+    // The moon already exists on the parent at this point, so say plainly what
+    // was created even though the boot cannot proceed.
     process.stderr.write(
       `${color('red', 'error')} ${pierPath} already exists — cannot boot.\n` +
-        `~${moon} was created on the parent; boot it by hand with its key.\n`,
+        `~${moon} exists on the parent; boot it by hand with its key.\n`,
     );
     return EXIT_FAILED;
   }
@@ -154,7 +214,7 @@ export async function newCommand(opts: NewOptions): Promise<number> {
   // than argv, and removed as soon as the boot finishes.
   const keyDir = mkdtempSync(join(tmpdir(), 'minato-key-'));
   const keyFile = join(keyDir, 'moon.key');
-  writeFileSync(keyFile, `${result.key}\n`, { mode: 0o600 });
+  writeFileSync(keyFile, `${key}\n`, { mode: 0o600 });
 
   try {
     const child = spawn(

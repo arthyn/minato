@@ -87,6 +87,7 @@ The inference is one-directional by design: it can prove a ship is up, never tha
 
 - **Never stop or restart a moon that you did not start, without asking.** Other sessions, agents, and the user's own terminals depend on these ships. `minato stop` and `minato restart` are user-initiated actions.
 - **Never `kill -9` a ship.** `minato stop` sends SIGTERM and waits; a killed serf can lose events. If it times out, report that and stop — the user decides whether to force it.
+- **Never boot an `archived` pier, and never suggest `unarchive` to get past a refusal.** Archived means the pier is a copy of a ship whose live instance runs elsewhere; booting it can corrupt that live ship. `minato` refuses with exit 4 and `--yes` does not override it. Report the refusal and stop.
 - **Never act on an `ambiguous` pier.** That means a duplicate boot or an orphaned worker. `minato` deliberately refuses; so should you. Surface the issue and let the user resolve it.
 - Booting a long-stale ship can trigger an OTA. If `minato list` shows the moon is months idle, say so before starting it.
 - Ships started from a terminal tab die with that tab (`doctor` flags this as `terminal-bound`). Ships started by `minato start` are detached and survive.

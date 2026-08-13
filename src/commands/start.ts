@@ -43,7 +43,25 @@ export async function startCommand(opts: StartOptions): Promise<number> {
   const piers = readAllPiers(config, state);
   const pier = resolvePier(piers, opts.moon);
 
-  // ---- preflight: duplicate-boot protection (spec §11) ----
+  // ---- preflight ----
+  //
+  // Archived piers are hard-blocked, with no --yes or --force override. These
+  // are typically copies of a ship whose live instance runs elsewhere, and
+  // booting a second instance can corrupt the live one. Unarchiving is a
+  // separate, deliberate act.
+  if (pier.archived) {
+    process.stderr.write(
+      `${color('red', 'refusing to start')} ~${pier.ship}: this pier is archived.\n` +
+        `  ${pier.path}\n` +
+        (getMeta(state, pier.path).notes
+          ? `  note: ${getMeta(state, pier.path).notes}\n`
+          : '') +
+        'Archived piers are never booted. If you are certain, run:\n' +
+        `  minato unarchive ${pier.shortname}\n`,
+    );
+    return EXIT_SAFETY;
+  }
+
   if (pier.livenessSource !== 'process-table') {
     // Inference can confirm a ship is up but cannot detect a second boot, and
     // cannot establish that a ship is down. Neither is a basis for booting.

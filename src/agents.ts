@@ -188,6 +188,55 @@ export function codexAgent(path: string): AgentConfig {
   };
 }
 
+/**
+ * Ships that some agent config reaches at a **remote** address.
+ *
+ * A local pier for one of these is almost always an archive or a backup of a
+ * ship whose live instance runs elsewhere. Booting it would put a second
+ * instance of that ship on the network, so it is worth flagging loudly.
+ *
+ * Ship names are recovered from `urbauth-~<ship>` session cookies, which is
+ * where an authenticated remote endpoint records who it is talking to.
+ */
+export function remoteShips(paths: string[]): Set<string> {
+  const ships = new Set<string>();
+  const collect = (text: string): void => {
+    for (const m of text.matchAll(/urbauth-~([a-z]+(?:-[a-z]+)*)/g)) ships.add(m[1]);
+  };
+
+  for (const path of paths) {
+    if (!existsSync(path)) continue;
+    const raw = readFileSync(path, 'utf8');
+
+    if (path.endsWith('.toml')) {
+      for (const block of findMcpBlocks(raw)) {
+        if (localUrlsIn(block.text).length === 0) collect(block.text);
+      }
+      continue;
+    }
+
+    let cfg: ClaudeConfigShape;
+    try {
+      cfg = JSON.parse(raw) as ClaudeConfigShape;
+    } catch {
+      continue;
+    }
+    const blocks: Array<Record<string, { url?: string }>> = [];
+    if (cfg.mcpServers) blocks.push(cfg.mcpServers);
+    for (const project of Object.values(cfg.projects ?? {})) {
+      if (project?.mcpServers) blocks.push(project.mcpServers);
+    }
+    for (const block of blocks) {
+      for (const server of Object.values(block)) {
+        if (typeof server?.url !== 'string') continue;
+        if (parseLocalUrl(server.url) !== null) continue;
+        collect(JSON.stringify(server));
+      }
+    }
+  }
+  return ships;
+}
+
 export function defaultAgentConfigPaths(): string[] {
   return [join(homedir(), '.claude.json'), join(homedir(), '.codex', 'config.toml')];
 }

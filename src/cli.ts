@@ -6,6 +6,7 @@ import { startCommand, EXIT_OK, EXIT_VALIDATION } from './commands/start.ts';
 import { stopCommand } from './commands/stop.ts';
 import { mcpStatusCommand, mcpSyncCommand } from './commands/mcpSync.ts';
 import { newCommand } from './commands/new.ts';
+import { archiveCommand, unarchiveCommand } from './commands/archive.ts';
 import { loadConfig, loadState, saveState, setMeta } from './config.ts';
 import { readAllPiers, resolvePier } from './discover.ts';
 import { color, humanAge, humanBytes } from './ui.ts';
@@ -19,6 +20,8 @@ usage
   minato inspect <moon>
   minato doctor [moon] [--json]
   minato name <moon|pier-path> <shortname>
+  minato archive <moon> [--note <text>]     mark never-boot
+  minato unarchive <moon>
   minato start <moon> [--port <n>] [--yes]
   minato stop <moon> [--yes] [--timeout <s>]
   minato restart <moon> [--port <n>] [--yes]
@@ -34,6 +37,9 @@ exit codes
 const OPTIONS = {
   state: { type: 'string' },
   planet: { type: 'string' },
+  note: { type: 'string' },
+  ship: { type: 'string' },
+  'key-file': { type: 'string' },
   dir: { type: 'string' },
   desk: { type: 'string' },
   hosted: { type: 'boolean' },
@@ -122,6 +128,8 @@ async function main(): Promise<number> {
       return newCommand({
         shortname: rest[0],
         planet: values.planet,
+        ship: values.ship,
+        keyFile: values['key-file'],
         dir: values.dir,
         desk: values.desk,
         hosted: values.hosted,
@@ -144,6 +152,20 @@ async function main(): Promise<number> {
 
     case 'doctor':
       return doctorCommand({ moon: rest[0], json: values.json });
+
+    case 'archive':
+      if (!rest[0]) {
+        process.stderr.write('archive requires a moon\n');
+        return EXIT_VALIDATION;
+      }
+      return archiveCommand({ moon: rest[0], note: values.note, yes: values.yes });
+
+    case 'unarchive':
+      if (!rest[0]) {
+        process.stderr.write('unarchive requires a moon\n');
+        return EXIT_VALIDATION;
+      }
+      return unarchiveCommand({ moon: rest[0], yes: values.yes });
 
     case 'name':
       if (!rest[0] || !rest[1]) {
