@@ -26,6 +26,8 @@ node src/cli.ts list            # or ./bin/minato, or just `minato` once install
 | `src/discover.ts` | pier discovery and state resolution — the core logic |
 | `src/live.ts` | process table, ports, vere detection; no policy |
 | `src/agents.ts` | per-agent MCP config adapters (Claude JSON, Codex TOML) |
+| `src/eyre.ts` | Eyre auth, cookie cache, thread runner; ship-rank parsing |
+| `src/vere.ts` | locating a local vere or downloading one |
 | `src/mcp.ts` | audit and sync, format-agnostic |
 | `src/config.ts` | `~/.minato/config.json` and `state.json` |
 | `src/commands/` | one file per command |
@@ -46,6 +48,7 @@ Established by measurement against real piers, and several contradict what the d
 - Take one `ps` snapshot per run and answer every question from it, so a ship restarting mid-scan cannot read as two states.
 - **`ps` is denied inside Codex sandboxes** (`read-only` *and* `workspace-write`). `processTable()` throws instead of returning `[]`. Never soften this back into an empty list: an empty table reads as "nothing is running", which is precisely when `start` would cause a duplicate boot.
 - **`kill(pid, 0)` still discriminates inside the sandbox** — `EPERM` for a live process, `ESRCH` for a nonexistent one, because the kernel checks existence before permission. This is what `inferLiveness()` is built on. Network bind and connect are both `EPERM` there, so no port-based signal is available as corroboration.
+- **Vere ARM builds are named `aarch64` on every platform, macOS included.** `macos-arm64` is not published by bootstrap.urbit.org and 403s, while Node's `os.arch()` reports `arm64` — do not pass that through. This is a live bug in the upstream `gen-moon.sh` this feature was adapted from.
 - **The inference must stay one-directional.** It may conclude `running`; it must never conclude `stopped`. Unconfirmed piers are `unknown`. Preserving this direction is what makes the fallback safe, since the harmful error is believing a live ship is down.
 
 ## Invariants
@@ -55,6 +58,8 @@ Established by measurement against real piers, and several contradict what the d
 - **Never act on an `ambiguous` pier.** Refuse with exit 4.
 - **`mcp sync` rewrites ports only.** Auth headers, API keys and cookies are preserved verbatim — minato cannot mint `%mcp` keys. Back up before writing.
 - The Codex TOML adapter is a **scanner, not a parser**, so the user's comments and formatting survive. Keep edits surgical and range-based.
+- **Secrets never reach argv or logs.** The `+code` is read without echo and sent in a form body; the moon key goes to a `0600` file in a private temp dir, is passed to vere by path, and is removed in a `finally`. Session cookies are cached `0600`. Do not print, log, or pass any of these as arguments.
+- **Validate before prompting.** `new` checks shortname collisions and parent rank up front, so a doomed run never asks for a password.
 
 ## Testing against real piers
 

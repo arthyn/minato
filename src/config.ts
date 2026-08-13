@@ -39,6 +39,10 @@ export function loadConfig(): Config {
   return readJson(CONFIG_PATH, DEFAULT_CONFIG);
 }
 
+export function saveConfig(config: Config): void {
+  writeJsonAtomic(CONFIG_PATH, config);
+}
+
 export function loadState(): State {
   return readJson(STATE_PATH, DEFAULT_STATE);
 }

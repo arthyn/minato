@@ -5,6 +5,7 @@ import { doctorCommand } from './commands/doctor.ts';
 import { startCommand, EXIT_OK, EXIT_VALIDATION } from './commands/start.ts';
 import { stopCommand } from './commands/stop.ts';
 import { mcpStatusCommand, mcpSyncCommand } from './commands/mcpSync.ts';
+import { newCommand } from './commands/new.ts';
 import { loadConfig, loadState, saveState, setMeta } from './config.ts';
 import { readAllPiers, resolvePier } from './discover.ts';
 import { color, humanAge, humanBytes } from './ui.ts';
@@ -12,6 +13,8 @@ import { color, humanAge, humanBytes } from './ui.ts';
 const USAGE = `minato — lifecycle and MCP wiring for local Urbit moons
 
 usage
+  minato new [shortname] [--planet <ship|url>] [--dir <path>] [--port <n>]
+             [--hosted] [--desk <desk>] [--dry-run] [--yes]
   minato list [--state <s>] [--size] [--all] [--json]
   minato inspect <moon>
   minato doctor [moon] [--json]
@@ -30,6 +33,10 @@ exit codes
 
 const OPTIONS = {
   state: { type: 'string' },
+  planet: { type: 'string' },
+  dir: { type: 'string' },
+  desk: { type: 'string' },
+  hosted: { type: 'boolean' },
   port: { type: 'string' },
   timeout: { type: 'string' },
   size: { type: 'boolean' },
@@ -111,6 +118,19 @@ async function main(): Promise<number> {
   }
 
   switch (command) {
+    case 'new':
+      return newCommand({
+        shortname: rest[0],
+        planet: values.planet,
+        dir: values.dir,
+        desk: values.desk,
+        hosted: values.hosted,
+        port,
+        dryRun: values['dry-run'],
+        yes: values.yes,
+        json: values.json,
+      });
+
     case 'list':
     case 'ls':
       return listCommand({ state: values.state, json: values.json, size: values.size, all: values.all });

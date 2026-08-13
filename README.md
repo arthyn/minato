@@ -33,6 +33,8 @@ It also selects the Node it runs on. Absolute installs (`/opt/homebrew/bin/node`
 ## Commands
 
 ```
+minato new [shortname] [--planet <ship|url>] [--dir <path>] [--port <n>]
+           [--hosted] [--desk <desk>] [--dry-run] [--yes]
 minato list [--state <s>] [--size] [--all] [--json]
 minato inspect <moon>
 minato doctor [moon] [--json]
@@ -132,17 +134,34 @@ The guide teaches agents the operational rules — never restart a ship you did 
 
 ## State
 
-- `~/.minato/config.json` — scan roots, scan depth, staleness threshold (default 14 days), agent config paths.
+- `~/.minato/config.json` — scan roots, scan depth, staleness threshold (default 14 days), agent config paths, parent planet.
+- `~/.minato/cookies/` — cached Eyre sessions, `0600`. Delete to force re-authentication.
+- `~/.minato/vere/` — vere binaries downloaded for booting new moons.
 - `~/.minato/state.json` — per-pier metadata, **keyed by pier path**, not ship name: several piers can share a name (fakezods especially), so the name is not a unique key.
 
-## Moon creation (not wired up yet)
+## Creating moons
 
-`minato new` — allocating a moon identity from a parent planet — is the one part of the original design still unimplemented on the CLI side. The ship half of it exists already:
+```sh
+minato new [shortname] --planet <ship-or-url> [--dir <path>] [--port <n>]
+```
 
-- `planet-desk/moon-allocator/` — a Gall agent that mints moon tickets and keeps an append-only allocation ledger, with versioned state and idempotency by shortname.
-- `docs/moon-allocator-protocol.md` — the planet ↔ minato contract it implements.
+This authenticates to a parent ship over Eyre, runs the `gen-moon` thread to mint a moon, boots it detached, and records it. Adapted from [`gen-moon.sh`](https://github.com/tloncorp/tlon-apps/blob/mp/steward-crons/backend/gen-moon.sh) in tlon-apps.
 
-What is missing is the CLI end: calling the allocator, booting the returned ticket, and recording the result. Until then, create moons by hand and let `minato` track them.
+- `--planet` takes a **full URL** for a self-hosted ship, or a bare ship name, which resolves to `<ship>.arvo.network` (`--hosted` for `tlon.network`). The parent that works is remembered, so later runs need no flag.
+- The parent must be a planet, star, or galaxy — a moon cannot issue moons, and that is checked before you are asked for a password.
+- **The moon's name is derived randomly by the parent, not chosen.** `shortname` is only a local alias; leave it off and one is derived from the ship name.
+- `--dry-run` prints the plan and mints nothing. Minting is not reversible: the parent records the moon's keys, and since the name is random you cannot re-create the same one.
+- The `+code` is prompted for without echo, sent in a form body rather than argv, and the session cookie is cached `0600` under `~/.minato/cookies/`.
+- The returned key is written to a `0600` file in a private temp dir, passed to vere by path, and deleted once the boot finishes.
+- The thread lives in the `%groups` desk by default; override with `--desk`.
+
+Booting uses the newest vere already present in another pier, so a new moon lands on a version you are known to run. With no pier to borrow from, it downloads one into `~/.minato/vere/`.
+
+`minato` does not install desks, so `%mcp` is not put on the moon for you. After creating one, install it on the ship and add its endpoint to your agent config.
+
+### The unused allocator desk
+
+`planet-desk/moon-allocator/` is an earlier, different approach: a Gall agent with its own append-only allocation ledger and idempotency by shortname, described in `docs/moon-allocator-protocol.md`. `minato new` does **not** use it — the `gen-moon` thread needs nothing installed on the parent beyond the `%groups` desk. The desk is kept because it offers a named, auditable allocation record, which `gen-moon` does not.
 
 ## Status
 

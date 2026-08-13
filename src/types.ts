@@ -81,4 +81,9 @@ export interface Config {
   staleAfterDays: number;
   /** Agent configs whose MCP server entries minato owns and keeps in sync. */
   agentConfigs: string[];
+  /**
+   * Parent ship new moons are minted from — a bare ship name (resolved to
+   * `<ship>.arvo.network`) or a full URL for a self-hosted ship.
+   */
+  planet?: string;
 }

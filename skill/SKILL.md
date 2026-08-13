@@ -38,6 +38,17 @@ minato mcp status            # every local MCP entry vs live pier state
 minato doctor                # that, plus pier-level drift
 ```
 
+## Creating a moon
+
+```bash
+minato new [shortname] --planet <ship-or-url>    # mints from a parent, boots it
+minato new --dry-run --planet <ship-or-url>      # plan only, mints nothing
+```
+
+**Treat this as user-initiated.** Minting is not reversible — the parent records the moon's keys, and the name is derived randomly rather than chosen, so the same moon cannot be re-created. Never run it to "get a ship to test on"; ask, or use an existing moon.
+
+It prompts for the parent's `+code` on a terminal. In a non-interactive or sandboxed context that prompt cannot be answered, so the command will fail — that is expected, not a bug to route around. Never ask the user to paste a `+code` into the conversation.
+
 ## Reading the MCP audit
 
 `minato` audits **both** agent configs: `~/.claude.json` (Claude Code, global + per-project) and `~/.codex/config.toml` (Codex). Entries are labelled by which agent they came from. Remote endpoints are ignored.
