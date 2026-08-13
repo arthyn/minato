@@ -52,19 +52,31 @@ export interface Pier {
   issues: Issue[];
 }
 
+/** A piece of work in flight on a moon. */
+export interface WorkItem {
+  /** Short slug used to address the item, e.g. `notes-unread`. */
+  id: string;
+  /** One line on what is being done. */
+  note: string;
+  desk?: string;
+  repo?: string;
+  branch?: string;
+  /** Issue or PR URL, or a tracker identifier. */
+  link?: string;
+  /** ISO date the item was opened. */
+  started: string;
+}
+
 export interface MoonMeta {
   shortname?: string;
+  /** One line on what this moon is for. */
+  description?: string;
+  /** Work currently in flight here. Closed items are removed, not kept. */
+  work?: WorkItem[];
   /** Port to reuse on `minato start` when none is given. */
   desiredPort?: number;
   archived?: boolean;
   notes?: string;
-  /** Desk -> repo:branch mappings (spec §9). Recorded in v0, not yet acted on. */
-  workspaces?: Array<{
-    desk: string;
-    repo: string;
-    branch: string;
-    active: boolean;
-  }>;
 }
 
 export interface State {
@@ -79,6 +91,8 @@ export interface Config {
   scanDepth: number;
   /** Days without activity before a pier is reported stale (spec §12). */
   staleAfterDays: number;
+  /** Days before an open work item is queried as possibly finished. */
+  workStaleAfterDays: number;
   /** Agent configs whose MCP server entries minato owns and keeps in sync. */
   agentConfigs: string[];
   /**

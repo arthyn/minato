@@ -13,6 +13,7 @@ const DEFAULT_CONFIG: Config = {
   roots: [homedir()],
   scanDepth: 3,
   staleAfterDays: 14,
+  workStaleAfterDays: 21,
   agentConfigs: defaultAgentConfigPaths(),
 };
 

@@ -39,6 +39,9 @@ minato list [--state <s>] [--size] [--all] [--json]
 minato inspect <moon>
 minato doctor [moon] [--json]
 minato name <moon|pier-path> <shortname>
+minato describe <moon> <one-line description>
+minato work [moon] | work add <moon> "<note>" | work done <moon> <id>
+minato archive <moon> [--note <text>] | unarchive <moon>
 minato start <moon> [--port <n>] [--yes]
 minato stop <moon> [--yes] [--timeout <s>]
 minato restart <moon> [--port <n>] [--yes]
@@ -112,6 +115,31 @@ Degraded runs print `LIVENESS INFERRED`, mark confirmed ships `running*`, and sw
 
 Remote endpoints are ignored entirely; minato only claims local moons.
 
+## What each moon is for, and what's in flight
+
+Knowing a moon is up is half the problem; the other half is remembering what it was for and what is happening on it.
+
+```sh
+minato describe <moon> "dev ship for compiling and testing Tlon desks"
+minato work add <moon> "porting %notes unread counts" --desk notes --branch hunter/tlon-1234
+minato work                       # directory across all moons
+minato work <moon>                # one moon, plus its mounted desks
+minato work done <moon> <id>
+```
+
+```
+sidwyn ~sampel-sampel-sampel-palnet  running
+  default dev ship for compiling and testing Tlon desks
+  • gen-moon-thread  gen-moon thread PR to staging
+      %groups  hunter/tlon-6335-gen-moon  https://linear.app/...
+      opened today
+  desks: groups, lua, mcp, notes, slack-bridge
+```
+
+The `desks:` line is **derived**, not recorded — any directory in the pier carrying a `sys.kelvin` is a mounted desk. It is always accurate and costs nothing to maintain, but it only tells you what a moon *can* do. What is actually being worked on has to be written down.
+
+Because a stale record is worse than an empty one, `doctor` pushes back on both failure modes: every running moon with no description, and every work item still open past `workStaleAfterDays` (21 by default). The agent skill instructs agents to read the record before ship work, add an item when they start something durable, and close it when they finish.
+
 ## Archived piers (never boot)
 
 A pier that is a copy of a ship whose live instance runs somewhere else must never be booted: two instances of the same ship on the network can corrupt the live one. Mark those piers as archived.
@@ -157,7 +185,7 @@ The guide teaches agents the operational rules — never restart a ship you did 
 
 ## State
 
-- `~/.minato/config.json` — scan roots, scan depth, staleness threshold (default 14 days), agent config paths, parent planet.
+- `~/.minato/config.json` — scan roots, scan depth, staleness thresholds (14 days for piers, 21 for work items), agent config paths, parent planet.
 - `~/.minato/cookies/` — cached Eyre sessions, `0600`. Delete to force re-authentication.
 - `~/.minato/vere/` — vere binaries downloaded for booting new moons.
 - `~/.minato/state.json` — per-pier metadata, **keyed by pier path**, not ship name: several piers can share a name (fakezods especially), so the name is not a unique key.

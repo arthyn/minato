@@ -1,8 +1,9 @@
-import { loadConfig, loadState } from '../config.ts';
+import { getMeta, loadConfig, loadState } from '../config.ts';
 import { livenessDegraded, livenessUnknown, readAllPiers, resolvePier } from '../discover.ts';
 import { auditMcp, type McpEntry } from '../mcp.ts';
 import { remoteShips } from '../agents.ts';
 import { color } from '../ui.ts';
+import type { WorkItem } from '../types.ts';
 
 export interface DoctorOptions {
   moon?: string;
@@ -81,6 +82,41 @@ export async function doctorCommand(opts: DoctorOptions): Promise<number> {
           `    ${color('dim', pier.path)}\n` +
           `    ${color('dim', 'booting it would put a second instance of a live ship on the network')}\n` +
           `    ${color('dim', `fix: minato archive ${pier.shortname}`)}\n`,
+      );
+    }
+    process.stdout.write('\n');
+  }
+
+  // The recorded workstream is the part nothing can derive: mounted desks show
+  // what a moon *can* do, never what is being done on it right now. So a moon
+  // carrying no description, or work that has sat untouched, is reported —
+  // otherwise the record quietly rots into being worse than nothing.
+  const undescribed = piers.filter(
+    (p) => p.state === 'running' && !p.archived && !getMeta(state, p.path).description,
+  );
+  const staleWork: Array<{ pier: typeof piers[number]; item: WorkItem; days: number }> = [];
+  for (const pier of piers) {
+    for (const item of getMeta(state, pier.path).work ?? []) {
+      const days = Math.floor((Date.now() - new Date(item.started).getTime()) / 86_400_000);
+      if (days > config.workStaleAfterDays) staleWork.push({ pier, item, days });
+    }
+  }
+
+  if (undescribed.length > 0 || staleWork.length > 0) {
+    process.stdout.write(`${color('bold', 'WORK RECORD')}\n`);
+    for (const pier of undescribed) {
+      problems += 1;
+      process.stdout.write(
+        `  ${color('yellow', ' warn')}  ~${pier.ship} is running with no description\n` +
+          `           ${color('dim', `fix: minato describe ${pier.shortname} "<what it is for>"`)}\n`,
+      );
+    }
+    for (const { pier, item, days } of staleWork) {
+      problems += 1;
+      process.stdout.write(
+        `  ${color('yellow', ' warn')}  "${item.id}" on ~${pier.ship} has been open ${days} days\n` +
+          `           ${color('dim', `${item.note}`)}\n` +
+          `           ${color('dim', `fix: minato work done ${pier.shortname} ${item.id} — or confirm it is still active`)}\n`,
       );
     }
     process.stdout.write('\n');

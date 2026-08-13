@@ -7,6 +7,7 @@ import { stopCommand } from './commands/stop.ts';
 import { mcpStatusCommand, mcpSyncCommand } from './commands/mcpSync.ts';
 import { newCommand } from './commands/new.ts';
 import { archiveCommand, unarchiveCommand } from './commands/archive.ts';
+import { describeCommand, workAddCommand, workDoneCommand, workListCommand } from './commands/work.ts';
 import { loadConfig, loadState, saveState, setMeta } from './config.ts';
 import { readAllPiers, resolvePier } from './discover.ts';
 import { color, humanAge, humanBytes } from './ui.ts';
@@ -20,6 +21,10 @@ usage
   minato inspect <moon>
   minato doctor [moon] [--json]
   minato name <moon|pier-path> <shortname>
+  minato describe <moon> <one-line description>
+  minato work [moon] [--json]                    directory of work in flight
+  minato work add <moon> "<note>" [--desk d] [--repo r] [--branch b] [--link url]
+  minato work done <moon> <id>
   minato archive <moon> [--note <text>]     mark never-boot
   minato unarchive <moon>
   minato start <moon> [--port <n>] [--yes]
@@ -38,6 +43,10 @@ const OPTIONS = {
   state: { type: 'string' },
   planet: { type: 'string' },
   note: { type: 'string' },
+  repo: { type: 'string' },
+  branch: { type: 'string' },
+  link: { type: 'string' },
+  id: { type: 'string' },
   ship: { type: 'string' },
   'key-file': { type: 'string' },
   dir: { type: 'string' },
@@ -166,6 +175,32 @@ async function main(): Promise<number> {
         return EXIT_VALIDATION;
       }
       return unarchiveCommand({ moon: rest[0], yes: values.yes });
+
+    case 'describe':
+      if (!rest[0] || rest.length < 2) {
+        process.stderr.write('usage: minato describe <moon> <one-line description>\n');
+        return EXIT_VALIDATION;
+      }
+      return describeCommand({ moon: rest[0], description: rest.slice(1).join(' ') });
+
+    case 'work': {
+      const sub = rest[0];
+      if (sub === 'add') {
+        return workAddCommand({
+          moon: rest[1],
+          note: rest.slice(2).join(' ') || undefined,
+          desk: values.desk,
+          repo: values.repo,
+          branch: values.branch,
+          link: values.link,
+          id: values.id,
+        });
+      }
+      if (sub === 'done' || sub === 'close') {
+        return workDoneCommand({ moon: rest[1], id: rest[2] ?? values.id });
+      }
+      return workListCommand({ moon: sub, json: values.json, all: values.all });
+    }
 
     case 'name':
       if (!rest[0] || !rest[1]) {

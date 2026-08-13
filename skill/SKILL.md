@@ -1,6 +1,6 @@
 ---
 name: minato
-description: Find, start, and verify local Urbit moons before doing ship work. Use when a task needs a running moon or its MCP tools — compiling or committing a desk, scrying, poking an agent, testing on a dev ship — or when a ship-backed MCP server is failing, missing, or pointing at the wrong port. Also use to answer "which moons are running", "what port is <ship> on", or "why can't I reach <ship>".
+description: Find, start, and verify local Urbit moons before doing ship work, and keep the record of what each moon is for and what work is in flight on it. Use when a task needs a running moon or its MCP tools — compiling or committing a desk, scrying, poking an agent, testing on a dev ship — or when a ship-backed MCP server is failing, missing, or pointing at the wrong port. Also use to answer "which moons are running", "what port is <ship> on", "why can't I reach <ship>", "what is <moon> for", or "what am I working on there" — and to record work started or finished on a moon.
 ---
 
 # minato — get a working moon before doing ship work
@@ -17,6 +17,7 @@ It is installed on `PATH`. If a restricted environment cannot resolve it, fall b
 minato list                  # human table
 minato list --state running  # just what's live
 minato list --json           # for parsing
+minato work                  # what each moon is for, and what is in flight
 ```
 
 **2. Resolve the moon you need.** Moons are addressed by shortname (the first phoneme of the ship, e.g. `sampel`), full ship name, or pier path. If a shortname is ambiguous the command errors and lists the candidates — pass a full path instead.
@@ -37,6 +38,46 @@ minato start <moon>          # reuses the port agents already expect
 minato mcp status            # every local MCP entry vs live pier state
 minato doctor                # that, plus pier-level drift
 ```
+
+## Keeping the work record current — do this every session
+
+Each moon carries a **description** (what it is for) and a list of **work items** (what is in flight on it right now). This is the part of minato nothing can infer: mounted desks show what a moon *can* do, never what is being done on it. If nobody writes it down it does not exist, and a record that is merely out of date is worse than an empty one — it will be believed.
+
+**You are responsible for keeping this accurate.** Concretely:
+
+**Before starting ship work**, read the record so you know what else is going on there:
+
+```bash
+minato work            # directory across all moons
+minato work <moon>     # one moon: description, open work, mounted desks
+```
+
+**When you begin a distinct piece of work on a moon**, record it — a desk migration, a bug you are chasing, a feature branch:
+
+```bash
+minato work add <moon> "porting %notes unread counts" \
+  --desk notes --branch hunter/tlon-1234-unreads --link https://linear.app/...
+```
+
+Skip this for trivia — a one-off scry, restarting a ship, reading logs. Record work that will still be in progress after this session ends.
+
+**When that work is finished or abandoned, close it**:
+
+```bash
+minato work done <moon> <id>
+```
+
+Leaving items open forever is the main way this record rots. `doctor` starts warning once an item has been open past the threshold (21 days by default) — when you see that warning, do not ignore it: either close the item or confirm with the user that it is still live.
+
+**If a moon has no description and you are working on it, add one** — one line, what the moon is for, not what you are doing today:
+
+```bash
+minato describe <moon> "dev ship for compiling and testing Tlon desks"
+```
+
+`doctor` reports every running moon that lacks one.
+
+**When the user tells you what a moon is for, or what they are working on there, write it down** rather than only using it for the current turn. That is the whole point of the record.
 
 ## Creating a moon
 

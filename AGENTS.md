@@ -28,6 +28,8 @@ node src/cli.ts list            # or ./bin/minato, or just `minato` once install
 | `src/agents.ts` | per-agent MCP config adapters (Claude JSON, Codex TOML) |
 | `src/eyre.ts` | Eyre auth, cookie cache, thread runner; ship-rank parsing |
 | `src/vere.ts` | locating a local vere or downloading one |
+| `src/desks.ts` | detecting mounted desks in a pier |
+| `src/commands/work.ts` | descriptions and the work record |
 | `src/mcp.ts` | audit and sync, format-agnostic |
 | `src/config.ts` | `~/.minato/config.json` and `state.json` |
 | `src/commands/` | one file per command |
@@ -76,4 +78,8 @@ For adapter changes, round-trip against a **copy** of the config and `diff` it �
 
 ## Not built yet
 
-`new`, `swap`, `update`, `dojo`, archive/unarchive, interactive mode. Deferred deliberately — moons get created rarely and looked for constantly, so the inventory and wiring half came first.
+`swap`, `update`, `dojo`, interactive mode. Deferred deliberately — moons get created rarely and looked for constantly, so the inventory and wiring half came first.
+
+## The work record
+
+`description` and `work` in `state.json` are the one part of minato nothing can derive. `src/desks.ts` detects mounted desks, which shows what a moon *can* do; it can never show what is being done on it. A stale record is worse than an empty one because it gets believed, so `doctor` warns on running moons with no description and on work items open past `workStaleAfterDays`, and `skill/SKILL.md` makes maintaining it an explicit agent responsibility. Keep that pressure in place — dropping the warnings would let the record rot silently.
