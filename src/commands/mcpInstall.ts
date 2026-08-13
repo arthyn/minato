@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { loadConfig, loadState } from '../config.ts';
 import { readAllPiers, resolvePier } from '../discover.ts';
 import { findClick, pokeStrand, runStrand, type Click } from '../click.ts';
@@ -19,6 +19,21 @@ export interface McpInstallOptions {
 }
 
 const DEFAULT_REPO = join(homedir(), 'Projects/mcp');
+
+/**
+ * Empty a mounted desk directory, leaving the directory itself in place.
+ *
+ * Guarded rather than trusting the caller: this deletes recursively, so it
+ * refuses anything that is not a `<pier>/mcp` mount holding a `sys.kelvin`.
+ */
+function clearDesk(deskPath: string): void {
+  if (basename(deskPath) !== 'mcp' || !existsSync(join(deskPath, 'sys.kelvin'))) {
+    throw new Error(`refusing to clear ${deskPath}: does not look like a mounted %mcp desk`);
+  }
+  for (const entry of readdirSync(deskPath)) {
+    rmSync(join(deskPath, entry), { recursive: true, force: true });
+  }
+}
 
 /**
  * Install %mcp onto a local ship, following the documented build:
@@ -101,17 +116,32 @@ export async function mcpInstallCommand(opts: McpInstallOptions): Promise<number
         '(pure:m !>(%ok))',
       ]);
 
-      step('mounting %mcp');
-      runStrand(click, pier.path, [
-        '=/  m  (strand ,vase)',
-        ';<  =bowl  bind:m  get-bowl',
-        '=/  =path  [(scot %p our.bowl) %mcp (scot %da now.bowl) ~]',
-        ';<  ~  bind:m  (poke [our.bowl %hood] kiln-mount+!>([path %mcp]))',
-        '(pure:m !>(%ok))',
-      ]);
-    } else {
-      step('%mcp already mounted, reusing');
     }
+
+    // Unmount before mounting, even on a fresh desk. A mount Clay is no longer
+    // tracking accepts file writes but makes the later |commit a silent no-op,
+    // which fails by appearing to succeed.
+    step('mounting %mcp');
+    runStrand(click, pier.path, [
+      '=/  m  (strand ,vase)',
+      ';<  =bowl  bind:m  get-bowl',
+      ';<  ~  bind:m  (poke [our.bowl %hood] kiln-unmount+!>(%mcp))',
+      ';<  ~  bind:m  (sleep ~s1)',
+      '=/  =path  [(scot %p our.bowl) %mcp (scot %da now.bowl) ~]',
+      ';<  ~  bind:m  (poke [our.bowl %hood] kiln-mount+!>([path %mcp]))',
+      '(pure:m !>(%ok))',
+    ]);
+
+    // Wait for Clay to finish writing the mount out before touching it.
+    for (let i = 0; i < 30 && !existsSync(join(deskPath, 'sys.kelvin')); i += 1) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    // Creating the desk by merging %base leaves that desk's files behind, and
+    // the build copies in without deleting — so the desk would carry all of
+    // %base's gen/ and sys/ alongside %mcp. Emptying it first makes the commit
+    // produce exactly the built desk.
+    clearDesk(deskPath);
 
     // zig replaces the mounted desk's contents with /dist — the desk source
     // plus its resolved dependencies.
