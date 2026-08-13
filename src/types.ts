@@ -40,6 +40,8 @@ export interface Pier {
   pids: number[];
   /** The supervising process to signal on stop; null unless exactly one is up. */
   kingPid: number | null;
+  /** screen/tmux session supervising this ship, when there is one. */
+  session: { kind: 'screen' | 'tmux'; name: string } | null;
   /** PIDs left in .vere.lock by boots that are no longer running. */
   deadLockPids: number[];
   vere: string | null;
@@ -93,6 +95,11 @@ export interface Config {
   staleAfterDays: number;
   /** Days before an open work item is queried as possibly finished. */
   workStaleAfterDays: number;
+  /**
+   * How `start` supervises a ship. `daemon` detaches with -d and gives no
+   * dojo; `screen`/`tmux` also survive the terminal but stay attachable.
+   */
+  sessionMode: 'daemon' | 'screen' | 'tmux';
   /** Agent configs whose MCP server entries minato owns and keeps in sync. */
   agentConfigs: string[];
   /**

@@ -14,6 +14,7 @@ const DEFAULT_CONFIG: Config = {
   scanDepth: 3,
   staleAfterDays: 14,
   workStaleAfterDays: 21,
+  sessionMode: 'daemon',
   agentConfigs: defaultAgentConfigPaths(),
 };
 

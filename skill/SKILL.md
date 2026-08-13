@@ -30,8 +30,12 @@ minato inspect <moon>        # everything about one moon: what it is for, work i
 **3. If it's down, start it.**
 
 ```bash
-minato start <moon>          # reuses the port agents already expect
+minato start <moon>                 # reuses the port agents already expect
+minato start <moon> --session tmux  # same, but attachable for a dojo
+minato dojo <moon>                  # attach to a session-managed ship
 ```
+
+A ship started `--session screen|tmux` keeps a dojo you can attach to; a plain `-d` daemon has no terminal at all. `minato dojo` says so rather than guessing.
 
 **4. Check the wiring before assuming an MCP tool is broken.**
 

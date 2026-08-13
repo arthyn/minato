@@ -7,12 +7,15 @@ import { auditMcp } from '../mcp.ts';
 import { checkPort, processTable } from '../live.ts';
 import type { Pier } from '../types.ts';
 import { color, confirm } from '../ui.ts';
+import { attachCommand, sessionName, sessionToolAvailable, wrapForSession, type SessionKind } from '../session.ts';
 
 export interface StartOptions {
   moon: string;
   port?: number;
   yes?: boolean;
   json?: boolean;
+  /** Override the configured supervision mode for this boot. */
+  session?: SessionKind;
 }
 
 export const EXIT_OK = 0;
@@ -127,8 +130,28 @@ export async function startCommand(opts: StartOptions): Promise<number> {
   }
 
   // ---- boot ----
-  process.stdout.write(`starting ~${pier.ship} on port ${port}…\n`);
-  const child = spawn(runPath, ['-d', '--http-port', String(port)], {
+  const mode: SessionKind = opts.session ?? config.sessionMode ?? 'daemon';
+  if (!sessionToolAvailable(mode)) {
+    process.stderr.write(`${color('red', 'error')} ${mode} is not installed\n`);
+    return EXIT_VALIDATION;
+  }
+
+  // Under screen/tmux the ship runs *without* -d, so it keeps its terminal and
+  // stays attachable for a dojo; the session is what detaches it. With -d there
+  // is no terminal to attach to at all.
+  const name = sessionName(pier.shortname);
+  const runArgs =
+    mode === 'daemon'
+      ? ['-d', '--http-port', String(port)]
+      : ['--http-port', String(port)];
+  const { file, argv } = wrapForSession(mode, name, runPath, runArgs);
+
+  process.stdout.write(
+    `starting ~${pier.ship} on port ${port}` +
+      (mode === 'daemon' ? '' : ` in ${mode} session ${color('bold', name)}`) +
+      '…\n',
+  );
+  const child = spawn(file, argv, {
     cwd: pier.path,
     detached: true,
     stdio: 'ignore',
@@ -145,6 +168,11 @@ export async function startCommand(opts: StartOptions): Promise<number> {
       process.stdout.write(
         `${color('green', 'running')} ~${fresh.ship} on ${fresh.ports.public} (pid ${fresh.kingPid})\n`,
       );
+      if (fresh.session) {
+        process.stdout.write(
+          color('dim', `  dojo: minato dojo ${pier.shortname}  (${attachCommand(fresh.session).join(' ')})\n`),
+        );
+      }
       for (const entry of mcpEntries) {
         if (entry.ref.port !== fresh.ports.public) {
           process.stdout.write(

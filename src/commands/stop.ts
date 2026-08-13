@@ -2,6 +2,7 @@ import { loadConfig, loadState, saveState, setMeta } from '../config.ts';
 import { readAllPiers, readPier, resolvePier } from '../discover.ts';
 import { processTable } from '../live.ts';
 import { color, confirm } from '../ui.ts';
+import { findClick, pokeStrand, runStrand } from '../click.ts';
 import { EXIT_FAILED, EXIT_OK, EXIT_SAFETY } from './start.ts';
 
 export interface StopOptions {
@@ -55,14 +56,37 @@ export async function stopCommand(opts: StopOptions): Promise<number> {
     }
   }
 
-  // SIGTERM is vere's graceful shutdown: it snapshots and exits. SIGKILL is
-  // never sent automatically (spec §5.1) — a killed serf can lose events.
-  process.stdout.write(`sending SIGTERM to ~${pier.ship} (pid ${pier.kingPid})…\n`);
+  // `|exit` is the ship's own clean shutdown, and unlike a signal it works on a
+  // daemonised ship — vere started with -d does not exit on SIGTERM, so the
+  // signal path alone silently fails to stop anything.
+  let asked = false;
   try {
-    process.kill(pier.kingPid, 'SIGTERM');
-  } catch (err) {
-    process.stderr.write(`${color('red', 'error')} could not signal: ${(err as Error).message}\n`);
-    return EXIT_FAILED;
+    const click = findClick();
+    if (click) {
+      process.stdout.write(`asking ~${pier.ship} to |exit…\n`);
+      // The ship dies mid-strand, so a transport error here is the expected
+      // outcome rather than a failure.
+      try {
+        runStrand(click, pier.path, pokeStrand('%hood', 'drum-exit', '~'), 30);
+      } catch {
+        // fall through — the wait loop below decides whether it worked
+      }
+      asked = true;
+    }
+  } catch {
+    // click unusable; fall back to the signal
+  }
+
+  if (!asked) {
+    // SIGTERM is the fallback. SIGKILL is never sent automatically — a killed
+    // serf can lose events.
+    process.stdout.write(`sending SIGTERM to ~${pier.ship} (pid ${pier.kingPid})…\n`);
+    try {
+      process.kill(pier.kingPid, 'SIGTERM');
+    } catch (err) {
+      process.stderr.write(`${color('red', 'error')} could not signal: ${(err as Error).message}\n`);
+      return EXIT_FAILED;
+    }
   }
 
   const timeoutS = opts.timeout ?? DEFAULT_TIMEOUT_S;
@@ -79,7 +103,7 @@ export async function stopCommand(opts: StopOptions): Promise<number> {
   }
 
   process.stderr.write(
-    `${color('yellow', 'warn')} ~${pier.ship} still running ${timeoutS}s after SIGTERM.\n` +
+    `${color('yellow', 'warn')} ~${pier.ship} still running ${timeoutS}s after ${asked ? '|exit' : 'SIGTERM'}.\n` +
       `It may be writing a snapshot. minato will not escalate to SIGKILL;\n` +
       `wait, or force it yourself with: kill -9 ${pier.kingPid}\n`,
   );

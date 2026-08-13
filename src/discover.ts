@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { join, basename } from 'node:path';
 import type { Config, Issue, Pier, State } from './types.ts';
 import { getMeta } from './config.ts';
+import { detectSession } from './session.ts';
 import {
   classifyPierProcs,
   detectVere,
@@ -131,6 +132,7 @@ export function readPier(
       ports: readHttpPorts(path),
       pids: inferred.pids,
       kingPid: null,
+      session: null,
       deadLockPids: [],
       vere: detectVere(path),
       lastActivity: lastActivity(path),
@@ -142,6 +144,7 @@ export function readPier(
   }
 
   const { kings, serfs } = classifyPierProcs(procs, path);
+  let session: Pier['session'] = null;
   const lockPids = readLockPids(path);
   const deadLockPids = lockPids.filter((pid) => !isAlive(pid));
   const running = kings.length === 1;
@@ -194,9 +197,11 @@ export function readPier(
     if (!ports.public && launchPort) ports.public = launchPort;
 
     // Ships started in a terminal tab die with it, which is a common way for a
-    // moon an agent depends on to vanish without explanation.
+    // moon an agent depends on to vanish without explanation. A ship inside a
+    // screen/tmux session survives the terminal, so it is exempt.
+    session = detectSession(procs, king.pid);
     const parent = procs.find((p) => p.pid === king.ppid);
-    if (parent && /(^|\/)-?(zsh|bash|sh|fish)$/.test(parent.command.split(/\s+/)[0])) {
+    if (!session && parent && /(^|\/)-?(zsh|bash|sh|fish)$/.test(parent.command.split(/\s+/)[0])) {
       issues.push({
         level: 'warn',
         code: 'terminal-bound',
@@ -248,6 +253,7 @@ export function readPier(
     ports,
     pids: [...kings.map((k) => k.pid), ...serfs.map((s) => s.pid)],
     kingPid: running ? kings[0].pid : null,
+    session,
     deadLockPids,
     vere: detectVere(path),
     lastActivity: activity,

@@ -10,6 +10,7 @@ import { archiveCommand, unarchiveCommand } from './commands/archive.ts';
 import { describeCommand, workAddCommand, workDoneCommand, workListCommand } from './commands/work.ts';
 import { mcpInstallCommand } from './commands/mcpInstall.ts';
 import { mcpRegisterCommand } from './commands/mcpRegister.ts';
+import { dojoCommand } from './commands/dojo.ts';
 import { getMeta, loadConfig, loadState, saveState, setMeta } from './config.ts';
 import { mountedDesks } from './desks.ts';
 import { auditMcp } from './mcp.ts';
@@ -31,7 +32,8 @@ usage
   minato work done <moon> <id>
   minato archive <moon> [--note <text>]     mark never-boot
   minato unarchive <moon>
-  minato start <moon> [--port <n>] [--yes]
+  minato start <moon> [--port <n>] [--session screen|tmux|daemon] [--yes]
+  minato dojo <moon>                        attach to its terminal
   minato stop <moon> [--yes] [--timeout <s>]
   minato restart <moon> [--port <n>] [--yes]
   minato mcp status [--json]
@@ -62,6 +64,8 @@ const OPTIONS = {
   dir: { type: 'string' },
   desk: { type: 'string' },
   hosted: { type: 'boolean' },
+  session: { type: 'string' },
+  print: { type: 'boolean' },
   port: { type: 'string' },
   timeout: { type: 'string' },
   size: { type: 'boolean' },
@@ -90,6 +94,14 @@ async function inspectCommand(moon: string): Promise<number> {
   field('vere', pier.vere ?? 'unknown');
   field('ports', pier.ports.public ? `${pier.ports.public} public, ${pier.ports.loopback ?? '?'} loopback` : '-');
   field('pids', pier.pids.length ? pier.pids.join(', ') : '-');
+  field(
+    'supervised',
+    pier.session
+      ? `${pier.session.kind} session ${pier.session.name}  (minato dojo ${pier.shortname})`
+      : pier.state === 'running'
+        ? 'detached (no dojo — restart with --session tmux for one)'
+        : '-',
+  );
   field('activity', humanAge(pier.lastActivity));
   field('size', humanBytes(pier.sizeBytes));
 
@@ -270,6 +282,13 @@ async function main(): Promise<number> {
       return workListCommand({ moon: sub, json: values.json, all: values.all });
     }
 
+    case 'dojo':
+      if (!rest[0]) {
+        process.stderr.write('dojo requires a moon\n');
+        return EXIT_VALIDATION;
+      }
+      return dojoCommand({ moon: rest[0], print: values.print });
+
     case 'name':
       if (!rest[0] || !rest[1]) {
         process.stderr.write('name requires a moon and a shortname\n');
@@ -282,7 +301,13 @@ async function main(): Promise<number> {
         process.stderr.write('start requires a moon\n');
         return EXIT_VALIDATION;
       }
-      return startCommand({ moon: rest[0], port, yes: values.yes, json: values.json });
+      return startCommand({
+        moon: rest[0],
+        port,
+        yes: values.yes,
+        json: values.json,
+        session: values.session as 'screen' | 'tmux' | 'daemon' | undefined,
+      });
 
     case 'stop':
       if (!rest[0]) {
@@ -308,7 +333,13 @@ async function main(): Promise<number> {
       // Only boot again if the ship is confirmed down; otherwise this would be
       // the double-boot the safety rules exist to prevent.
       if (stopped !== EXIT_OK) return stopped;
-      return startCommand({ moon: rest[0], port, yes: true, json: values.json });
+      return startCommand({
+        moon: rest[0],
+        port,
+        yes: true,
+        json: values.json,
+        session: values.session as 'screen' | 'tmux' | 'daemon' | undefined,
+      });
     }
 
     case 'mcp': {

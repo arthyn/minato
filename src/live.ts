@@ -79,11 +79,16 @@ export function tryProcessTable(): Proc[] | null {
  */
 export function commandTargetsPier(command: string, pierPath: string): boolean {
   const name = basename(pierPath);
-  return (
-    command.includes(`${pierPath}/.run`) ||
-    command.includes(`--snap-dir ${pierPath}`) ||
-    new RegExp(`(^|[\\s/])${escapeRegExp(name)}/\\.run(\\s|$)`).test(command)
-  );
+  // The pier path as a standalone argument covers every form vere uses to name
+  // it — `-c <pier>` when booting, `--snap-dir <pier>` for the serf — which
+  // matters because a ship booted with a vere borrowed from another pier never
+  // mentions its own `.run`.
+  //
+  // It must be a whole argument: a bare prefix match also hits the *binary*
+  // path of a ship running a borrowed vere, which would attribute that ship's
+  // processes to the pier it borrowed from and fake a duplicate boot there.
+  if (new RegExp(`\\s${escapeRegExp(pierPath)}(\\s|$)`).test(command)) return true;
+  return new RegExp(`(^|[\\s/])${escapeRegExp(name)}/\\.run(\\s|$)`).test(command);
 }
 
 function escapeRegExp(s: string): string {
@@ -105,11 +110,29 @@ export interface PierProcs {
  * booted twice — the case the safety rules exist to prevent.
  */
 export function classifyPierProcs(procs: Proc[], pierPath: string): PierProcs {
-  const mine = procs.filter((p) => commandTargetsPier(p.command, pierPath));
+  const mine = procs.filter(
+    (p) => commandTargetsPier(p.command, pierPath) && !isSessionWrapper(p.command),
+  );
+  // A serf is vere invoked with the `work` subcommand, whatever the binary is
+  // called. Keying on `.run work` broke for ships booted with a borrowed vere,
+  // and misreading a serf as the king means `stop` signals the wrong process.
+  const isSerf = (command: string): boolean => /^\s*\S+\s+work(\s|$)/.test(command);
   return {
-    kings: mine.filter((p) => !/\.run\s+work\s/.test(p.command)),
-    serfs: mine.filter((p) => /\.run\s+work\s/.test(p.command)),
+    kings: mine.filter((p) => !isSerf(p.command)),
+    serfs: mine.filter((p) => isSerf(p.command)),
   };
+}
+
+/**
+ * Is this the screen/tmux invocation that launched a ship, rather than a ship?
+ *
+ * `tmux new-session -d -s name <pier>/.run --http-port N` repeats the ship's
+ * whole command line in its own argv, so without this it counts as a second
+ * king and the ship reports as a duplicate boot the moment it starts.
+ */
+function isSessionWrapper(command: string): boolean {
+  const first = command.trim().split(/\s+/)[0];
+  return /(^|\/)(tmux|screen|SCREEN|login)$/.test(first);
 }
 
 /** The `--http-port` a king was launched with, which may predate a rebind. */

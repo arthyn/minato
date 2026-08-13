@@ -42,7 +42,8 @@ minato name <moon|pier-path> <shortname>
 minato describe <moon> <one-line description>
 minato work [moon] | work add <moon> "<note>" | work done <moon> <id>
 minato archive <moon> [--note <text>] | unarchive <moon>
-minato start <moon> [--port <n>] [--yes]
+minato start <moon> [--port <n>] [--session screen|tmux|daemon] [--yes]
+minato dojo <moon>
 minato stop <moon> [--yes] [--timeout <s>]
 minato restart <moon> [--port <n>] [--yes]
 minato mcp status [--json]
@@ -160,6 +161,26 @@ sidwyn ~sampel-sampel-sampel-palnet  running
 The `desks:` line is **derived**, not recorded — any directory in the pier carrying a `sys.kelvin` is a mounted desk. It is always accurate and costs nothing to maintain, but it only tells you what a moon *can* do. What is actually being worked on has to be written down.
 
 Because a stale record is worse than an empty one, `doctor` pushes back on both failure modes: every running moon with no description, and every work item still open past `workStaleAfterDays` (21 by default). The agent skill instructs agents to read the record before ship work, add an item when they start something durable, and close it when they finish.
+
+## Dojo access: screen and tmux
+
+A `-d` daemon survives the terminal but has no terminal to attach to, so there is no dojo. A ship started in a tab has a dojo but dies with the tab. A session gives both:
+
+```sh
+minato start <moon> --session tmux     # or screen, or daemon
+minato dojo <moon>                     # attach; --print just shows the command
+```
+
+Set `sessionMode` in `~/.minato/config.json` to make it the default. Under a session the ship runs **without** `-d` — the session is what detaches it, and `-d` would leave nothing to attach to.
+
+Sessions are named `minato-<shortname>`, and `doctor` exempts session-managed ships from the `terminal-bound` warning, since they do survive the terminal.
+
+Detection walks up from the king, because the trees differ:
+
+```
+screen:  SCREEN -> login -> .run
+tmux:    tmux server -> .run
+```
 
 ## Archived piers (never boot)
 
