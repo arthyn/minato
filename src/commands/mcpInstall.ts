@@ -7,6 +7,7 @@ import { readAllPiers, resolvePier } from '../discover.ts';
 import { findClick, pokeStrand, runStrand, type Click } from '../click.ts';
 import type { Pier } from '../types.ts';
 import { color, confirm } from '../ui.ts';
+import { tryRegisterMcp } from './mcpRegister.ts';
 import { EXIT_FAILED, EXIT_OK, EXIT_SAFETY, EXIT_VALIDATION } from './start.ts';
 
 export interface McpInstallOptions {
@@ -16,6 +17,8 @@ export interface McpInstallOptions {
   click?: string;
   yes?: boolean;
   dryRun?: boolean;
+  /** Register the endpoint with the agents afterwards. On by default. */
+  register?: boolean;
 }
 
 const DEFAULT_REPO = join(homedir(), 'Projects/mcp');
@@ -166,14 +169,13 @@ export async function mcpInstallCommand(opts: McpInstallOptions): Promise<number
     return EXIT_FAILED;
   }
 
-  process.stdout.write(`\n${color('green', 'installed')} %mcp on ~${pier.ship}\n`);
-  process.stdout.write(
-    color(
-      'dim',
-      'next: get the ship\'s +code, log in for an urbauth cookie, and register the\n' +
-        `endpoint at http://localhost:${pier.ports.public ?? '?'}/mcp with your agents.\n`,
-    ),
-  );
+  process.stdout.write(`\n${color('green', 'installed')} %mcp on ~${pier.ship}\n\n`);
+
+  // The desk is useless to an agent until something points at it, so finish the
+  // job rather than leaving a live endpoint nothing references.
+  if (opts.register !== false) {
+    await tryRegisterMcp(pier, { click: opts.click });
+  }
   return EXIT_OK;
 }
 

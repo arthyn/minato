@@ -229,7 +229,17 @@ Two things about click worth knowing, both learned the hard way:
 
 Desk source defaults to `~/Projects/mcp` (tloncorp/mcp); override with `--repo`. `zig` must be on PATH.
 
-Registering the endpoint with your agents is still manual: get the ship's `+code`, log in for an `urbauth` cookie, and add the entry. `minato mcp status` will then track it.
+### Registering it with your agents
+
+Installing the desk leaves a live endpoint nothing points at, so `mcp install` finishes the job by registering it — or run it alone:
+
+```sh
+minato mcp register <moon> [--name <entry>] [--dry-run]
+```
+
+The credential is **read off the ship**, not minted: `%mcp-proxy` generates a client key at install and exposes it at `/x/client-key`, and that is exactly the `x-api-key` the `/apps/mcp/mcp` endpoint expects. Reading it means minato and the ship can never disagree about what the key is.
+
+The entry is written to every configured agent — `mcpServers` in `~/.claude.json` (globally, so it applies in any project) and an `[mcp_servers.NAME]` table in `~/.codex/config.toml` — each backed up first. Restart the agent afterwards; MCP servers connect at startup.
 
 ### The unused allocator desk
 

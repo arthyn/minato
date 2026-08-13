@@ -9,6 +9,7 @@ import { newCommand } from './commands/new.ts';
 import { archiveCommand, unarchiveCommand } from './commands/archive.ts';
 import { describeCommand, workAddCommand, workDoneCommand, workListCommand } from './commands/work.ts';
 import { mcpInstallCommand } from './commands/mcpInstall.ts';
+import { mcpRegisterCommand } from './commands/mcpRegister.ts';
 import { loadConfig, loadState, saveState, setMeta } from './config.ts';
 import { readAllPiers, resolvePier } from './discover.ts';
 import { color, humanAge, humanBytes } from './ui.ts';
@@ -33,6 +34,7 @@ usage
   minato restart <moon> [--port <n>] [--yes]
   minato mcp status [--json]
   minato mcp install <moon> [--repo <path>] [--click <path>] [--dry-run]
+  minato mcp register <moon> [--name <entry>] [--dry-run]
   minato mcp sync [--dry-run] [--yes]
 
 <moon> is a shortname, ship name, or pier path.
@@ -47,6 +49,7 @@ const OPTIONS = {
   note: { type: 'string' },
   repo: { type: 'string' },
   click: { type: 'string' },
+  name: { type: 'string' },
   mcp: { type: 'boolean' },
   'no-mcp': { type: 'boolean' },
   branch: { type: 'string' },
@@ -256,6 +259,19 @@ async function main(): Promise<number> {
         return mcpSyncCommand({ dryRun: values['dry-run'], yes: values.yes, json: values.json });
       }
       if (sub === 'status') return mcpStatusCommand({ json: values.json });
+      if (sub === 'register') {
+        if (!rest[1]) {
+          process.stderr.write('usage: minato mcp register <moon>\n');
+          return EXIT_VALIDATION;
+        }
+        return mcpRegisterCommand({
+          moon: rest[1],
+          name: values.name,
+          click: values.click,
+          yes: values.yes,
+          dryRun: values['dry-run'],
+        });
+      }
       if (sub === 'install') {
         if (!rest[1]) {
           process.stderr.write('usage: minato mcp install <moon>\n');

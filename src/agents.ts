@@ -25,6 +25,12 @@ export interface PortChange {
  * Each agent stores MCP servers differently, so the audit works against this
  * interface rather than against any one file format.
  */
+export interface ServerSpec {
+  name: string;
+  url: string;
+  headers: Record<string, string>;
+}
+
 export interface AgentConfig {
   id: string;
   path: string;
@@ -32,6 +38,8 @@ export interface AgentConfig {
   read(): ServerRef[];
   /** Rewrite only the ports of the given entries; everything else untouched. */
   applyPortChanges(changes: PortChange[]): string;
+  /** Add or replace one server entry. Returns the backup path. */
+  upsertServer(spec: ServerSpec): string;
 }
 
 function parseLocalUrl(url: string): number | null {
@@ -101,6 +109,20 @@ export function claudeAgent(path: string): AgentConfig {
         url.port = String(toPort);
         server.url = url.toString();
       }
+      writeJsonAtomic(path, cfg);
+      return backupPath;
+    },
+    upsertServer(spec) {
+      const backupPath = backup(path);
+      const cfg = load();
+      // Registered globally: a moon is reachable from any project, and a
+      // project-scoped entry would silently not apply elsewhere.
+      cfg.mcpServers = cfg.mcpServers ?? {};
+      (cfg.mcpServers as Record<string, unknown>)[spec.name] = {
+        type: 'http',
+        url: spec.url,
+        headers: spec.headers,
+      };
       writeJsonAtomic(path, cfg);
       return backupPath;
     },
@@ -181,6 +203,28 @@ export function codexAgent(path: string): AgentConfig {
           (_full, host: string) => `${host}:${toPort}`,
         );
         toml = toml.slice(0, block.start) + updated + toml.slice(block.end);
+      }
+      writeFileSync(path, toml, 'utf8');
+      return backupPath;
+    },
+    upsertServer(spec) {
+      const backupPath = backup(path);
+      let toml = readFileSync(path, 'utf8');
+      const headers = Object.entries(spec.headers)
+        .map(([k, v]) => `"${k}" = "${v}"`)
+        .join(', ');
+      const block =
+        `[mcp_servers.${spec.name}]\n` +
+        `url = "${spec.url}"\n` +
+        (headers ? `http_headers = { ${headers} }\n` : '');
+
+      const existing = findMcpBlocks(toml).find((b) => b.name === spec.name);
+      if (existing) {
+        // Replace the table body in place, leaving the rest of the file alone.
+        toml = toml.slice(0, existing.start) + `\n${block.split('\n').slice(1).join('\n')}` +
+          toml.slice(existing.end);
+      } else {
+        toml = `${toml.replace(/\n*$/, '')}\n\n${block}`;
       }
       writeFileSync(path, toml, 'utf8');
       return backupPath;
