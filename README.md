@@ -123,8 +123,29 @@ Knowing a moon is up is half the problem; the other half is remembering what it 
 minato describe <moon> "dev ship for compiling and testing Tlon desks"
 minato work add <moon> "porting %notes unread counts" --desk notes --branch hunter/tlon-1234
 minato work                       # directory across all moons
-minato work <moon>                # one moon, plus its mounted desks
 minato work done <moon> <id>
+```
+
+`minato list` carries each moon's purpose and an open-work count, and `minato inspect <moon>` is the single view of everything a moon is associated with — purpose, work items with their desk/branch/link, mounted desks, and which agent configs can reach it:
+
+```
+~sampel-sampel-sampel-palnet
+  default dev ship for compiling and testing Tlon desks
+  shortname   sidwyn
+  ...
+work in flight
+  • gen-moon-thread  gen-moon thread PR to staging
+      desk %groups
+      branch hunter/tlon-6335-...
+      https://github.com/tloncorp/tlon-apps/pull/6279
+      opened today
+
+desks  (mounted, detected)
+  %groups (app)  touched today
+
+reachable by
+  ok  claude "sidwyn" -> http://localhost:8082/apps/mcp/mcp
+  ok  codex "sidwyn" -> http://localhost:8082/apps/mcp/mcp
 ```
 
 ```

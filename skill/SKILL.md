@@ -23,7 +23,8 @@ minato work                  # what each moon is for, and what is in flight
 **2. Resolve the moon you need.** Moons are addressed by shortname (the first phoneme of the ship, e.g. `sampel`), full ship name, or pier path. If a shortname is ambiguous the command errors and lists the candidates — pass a full path instead.
 
 ```bash
-minato inspect <moon>        # state, port, pids, vere, issues
+minato inspect <moon>        # everything about one moon: what it is for, work in
+                             # flight, mounted desks, which agents can reach it
 ```
 
 **3. If it's down, start it.**
@@ -45,11 +46,12 @@ Each moon carries a **description** (what it is for) and a list of **work items*
 
 **You are responsible for keeping this accurate.** Concretely:
 
-**Before starting ship work**, read the record so you know what else is going on there:
+**Before starting ship work**, read the record so you know what else is going on there. `list` shows each moon's purpose and how many items are open on it; `inspect` shows the detail:
 
 ```bash
-minato work            # directory across all moons
-minato work <moon>     # one moon: description, open work, mounted desks
+minato list            # purpose + open-work count per moon
+minato inspect <moon>  # work items with desk/branch/link, desks, reachability
+minato work            # the work record on its own, across all moons
 ```
 
 **When you begin a distinct piece of work on a moon**, record it — a desk migration, a bug you are chasing, a feature branch:

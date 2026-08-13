@@ -10,7 +10,9 @@ import { archiveCommand, unarchiveCommand } from './commands/archive.ts';
 import { describeCommand, workAddCommand, workDoneCommand, workListCommand } from './commands/work.ts';
 import { mcpInstallCommand } from './commands/mcpInstall.ts';
 import { mcpRegisterCommand } from './commands/mcpRegister.ts';
-import { loadConfig, loadState, saveState, setMeta } from './config.ts';
+import { getMeta, loadConfig, loadState, saveState, setMeta } from './config.ts';
+import { mountedDesks } from './desks.ts';
+import { auditMcp } from './mcp.ts';
 import { readAllPiers, resolvePier } from './discover.ts';
 import { color, humanAge, humanBytes } from './ui.ts';
 
@@ -72,13 +74,16 @@ const OPTIONS = {
 
 async function inspectCommand(moon: string): Promise<number> {
   const config = loadConfig();
-  const piers = readAllPiers(config, loadState(), { withSize: true });
+  const state = loadState();
+  const piers = readAllPiers(config, state, { withSize: true });
   const pier = resolvePier(piers, moon);
+  const meta = getMeta(state, pier.path);
 
   const field = (label: string, value: string): void => {
     process.stdout.write(`  ${color('dim', label.padEnd(12))}${value}\n`);
   };
   process.stdout.write(`${color('bold', `~${pier.ship}`)}\n`);
+  if (meta.description) process.stdout.write(`  ${meta.description}\n`);
   field('shortname', pier.shortname);
   field('state', pier.state);
   field('path', pier.path);
@@ -87,6 +92,59 @@ async function inspectCommand(moon: string): Promise<number> {
   field('pids', pier.pids.length ? pier.pids.join(', ') : '-');
   field('activity', humanAge(pier.lastActivity));
   field('size', humanBytes(pier.sizeBytes));
+
+  // What this moon is associated with: the work recorded against it, the desks
+  // it carries, and the agents that can reach it. Scattered across three
+  // commands before, which meant nobody saw it.
+  const work = meta.work ?? [];
+  if (work.length) {
+    process.stdout.write(`\n${color('bold', 'work in flight')}\n`);
+    for (const w of work) {
+      process.stdout.write(`  ${color('yellow', '•')} ${color('bold', w.id)}  ${w.note}\n`);
+      const bits = [
+        w.desk && `desk %${w.desk}`,
+        w.repo && `repo ${w.repo}`,
+        w.branch && `branch ${w.branch}`,
+        w.link,
+      ].filter(Boolean);
+      for (const b of bits) process.stdout.write(`      ${color('dim', String(b))}\n`);
+      process.stdout.write(`      ${color('dim', `opened ${humanAge(new Date(w.started))}`)}\n`);
+    }
+  } else if (!meta.description) {
+    process.stdout.write(
+      `\n${color('dim', `no work recorded — minato describe ${pier.shortname} "<what it is for>"`)}\n`,
+    );
+  }
+
+  const desks = mountedDesks(pier.path).filter((d) => d.name !== 'base');
+  if (desks.length) {
+    process.stdout.write(`\n${color('bold', 'desks')}  ${color('dim', '(mounted, detected)')}\n`);
+    for (const d of desks) {
+      process.stdout.write(
+        `  %${d.name}${d.docket ? color('dim', ' (app)') : ''}` +
+          `${d.lastTouched ? color('dim', `  touched ${humanAge(d.lastTouched)}`) : ''}\n`,
+      );
+    }
+  }
+
+  const mine = auditMcp(config, piers).filter((e) => e.pier?.path === pier.path);
+  if (mine.length) {
+    process.stdout.write(`\n${color('bold', 'reachable by')}\n`);
+    for (const e of mine) {
+      const mark = e.status === 'ok' ? color('green', 'ok') : color('yellow', e.status);
+      // Scope matters: the same name can exist globally and per-project, and
+      // without it the two read as one duplicated entry.
+      const scope = e.ref.scope === 'global' ? '' : color('dim', ` [${e.ref.scope}]`);
+      process.stdout.write(
+        `  ${mark}  ${e.ref.agent}${scope} "${e.ref.name}" -> ${e.ref.url}\n`,
+      );
+    }
+  } else {
+    process.stdout.write(
+      `\n${color('dim', `no agent config points here — minato mcp register ${pier.shortname}`)}\n`,
+    );
+  }
+
   if (pier.issues.length) {
     process.stdout.write(`\n${color('bold', 'issues')}\n`);
     for (const issue of pier.issues) {

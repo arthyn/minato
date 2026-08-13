@@ -1,5 +1,6 @@
 import { loadConfig, loadState } from '../config.ts';
 import { livenessDegraded, readAllPiers } from '../discover.ts';
+import { getMeta } from '../config.ts';
 import { color, humanAge, humanBytes, stateLabel, table } from '../ui.ts';
 
 export interface ListOptions {
@@ -67,7 +68,7 @@ export async function listCommand(opts: ListOptions): Promise<number> {
 
   const headers = ['SHORT', 'SHIP', 'STATE', 'PORT', 'VERE', 'ACTIVITY'];
   if (opts.size) headers.push('SIZE');
-  headers.push('');
+  headers.push('FOR', '');
 
   const rows = piers.map((p) => {
     const row = [
@@ -85,6 +86,18 @@ export async function listCommand(opts: ListOptions): Promise<number> {
       humanAge(p.lastActivity),
     ];
     if (opts.size) row.push(humanBytes(p.sizeBytes));
+
+    // What the moon is for, and how much is open on it. Kept in the default
+    // table because a record nobody sees is a record nobody maintains.
+    const meta = getMeta(state, p.path);
+    const open = meta.work?.length ?? 0;
+    const badge = open ? color('yellow', `${open}▸ `) : '';
+    const desc = meta.description ?? '';
+    const trimmed = desc.length > 38 ? `${desc.slice(0, 37)}…` : desc;
+    row.push(
+      badge + (trimmed || (p.state === 'running' ? color('dim', '(no description)') : '')),
+    );
+
     const errs = p.issues.filter((i) => i.level === 'error').length;
     const warns = p.issues.filter((i) => i.level === 'warn').length;
     const flags = [
