@@ -208,7 +208,28 @@ This authenticates to a parent ship over Eyre, runs the `gen-moon` thread to min
 
 Booting uses the newest vere already present in another pier, so a new moon lands on a version you are known to run. With no pier to borrow from, it downloads one into `~/.minato/vere/`.
 
-`minato` does not install desks, so `%mcp` is not put on the moon for you. After creating one, install it on the ship and add its endpoint to your agent config.
+### Installing %mcp
+
+`minato new` installs `%mcp` on the moon by default (`--no-mcp` opts out), and `minato mcp install <moon>` does it for an existing local ship. It follows the documented build:
+
+```
+|merge %mcp our %base     create the desk
+|mount %mcp
+zig build -Ddesk=<pier>/mcp
+|commit %mcp
+|install our %mcp
+```
+
+The dojo steps go through [`click`](https://github.com/urbit/urbit), which drives a ship over its `conn.sock` control plane. That is required rather than incidental: Eyre can only carry pokes that have a mark with a JSON conversion, and none of `%kiln-mount`, `%kiln-commit`, or `%kiln-info` do. It also means **this only works on a pier on this machine** — `conn.sock` is local by nature.
+
+Two things about click worth knowing, both learned the hard way:
+
+- **Copies are not equivalent.** Some pass netcat's timeout as `-W`, which is netcat-openbsd only and fails on macOS. minato prefers a copy that handles BSD netcat and refuses an explicitly-named one that does not, rather than silently substituting another.
+- **Hoon lines need two trailing spaces.** click concatenates its input, and without that padding the strand parses as one run-together expression and dies with a syntax error.
+
+Desk source defaults to `~/Projects/mcp` (tloncorp/mcp); override with `--repo`. `zig` must be on PATH.
+
+Registering the endpoint with your agents is still manual: get the ship's `+code`, log in for an `urbauth` cookie, and add the entry. `minato mcp status` will then track it.
 
 ### The unused allocator desk
 

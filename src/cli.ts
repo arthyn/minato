@@ -8,6 +8,7 @@ import { mcpStatusCommand, mcpSyncCommand } from './commands/mcpSync.ts';
 import { newCommand } from './commands/new.ts';
 import { archiveCommand, unarchiveCommand } from './commands/archive.ts';
 import { describeCommand, workAddCommand, workDoneCommand, workListCommand } from './commands/work.ts';
+import { mcpInstallCommand } from './commands/mcpInstall.ts';
 import { loadConfig, loadState, saveState, setMeta } from './config.ts';
 import { readAllPiers, resolvePier } from './discover.ts';
 import { color, humanAge, humanBytes } from './ui.ts';
@@ -16,7 +17,7 @@ const USAGE = `minato — lifecycle and MCP wiring for local Urbit moons
 
 usage
   minato new [shortname] [--planet <ship|url>] [--dir <path>] [--port <n>]
-             [--hosted] [--desk <desk>] [--dry-run] [--yes]
+             [--hosted] [--desk <desk>] [--no-mcp] [--dry-run] [--yes]
   minato list [--state <s>] [--size] [--all] [--json]
   minato inspect <moon>
   minato doctor [moon] [--json]
@@ -31,6 +32,7 @@ usage
   minato stop <moon> [--yes] [--timeout <s>]
   minato restart <moon> [--port <n>] [--yes]
   minato mcp status [--json]
+  minato mcp install <moon> [--repo <path>] [--click <path>] [--dry-run]
   minato mcp sync [--dry-run] [--yes]
 
 <moon> is a shortname, ship name, or pier path.
@@ -44,6 +46,9 @@ const OPTIONS = {
   planet: { type: 'string' },
   note: { type: 'string' },
   repo: { type: 'string' },
+  click: { type: 'string' },
+  mcp: { type: 'boolean' },
+  'no-mcp': { type: 'boolean' },
   branch: { type: 'string' },
   link: { type: 'string' },
   id: { type: 'string' },
@@ -146,6 +151,8 @@ async function main(): Promise<number> {
         dryRun: values['dry-run'],
         yes: values.yes,
         json: values.json,
+        mcp: values['no-mcp'] ? false : true,
+        mcpRepo: values.repo,
       });
 
     case 'list':
@@ -249,6 +256,19 @@ async function main(): Promise<number> {
         return mcpSyncCommand({ dryRun: values['dry-run'], yes: values.yes, json: values.json });
       }
       if (sub === 'status') return mcpStatusCommand({ json: values.json });
+      if (sub === 'install') {
+        if (!rest[1]) {
+          process.stderr.write('usage: minato mcp install <moon>\n');
+          return EXIT_VALIDATION;
+        }
+        return mcpInstallCommand({
+          moon: rest[1],
+          repo: values.repo,
+          click: values.click,
+          yes: values.yes,
+          dryRun: values['dry-run'],
+        });
+      }
       process.stderr.write(`unknown mcp subcommand: ${sub}\n`);
       return EXIT_VALIDATION;
     }

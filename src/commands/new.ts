@@ -9,6 +9,7 @@ import { readSecret, resolveEndpoint, runThread, shipRank } from '../eyre.ts';
 import type { Config, State } from '../types.ts';
 import { resolveVere } from '../vere.ts';
 import { color, confirm } from '../ui.ts';
+import { tryInstallMcp } from './mcpInstall.ts';
 import { EXIT_FAILED, EXIT_OK, EXIT_SAFETY, EXIT_VALIDATION } from './start.ts';
 
 export interface NewOptions {
@@ -24,6 +25,9 @@ export interface NewOptions {
   /** Adopt a moon already minted by `|moon`, rather than running the thread. */
   ship?: string;
   keyFile?: string;
+  /** Install %mcp after boot. On by default; --no-mcp opts out. */
+  mcp?: boolean;
+  mcpRepo?: string;
 }
 
 interface GenMoonResult {
@@ -240,13 +244,12 @@ async function bootMoon({ moon, key, config, state, opts }: BootArgs): Promise<n
           `${color('green', 'running')} ~${moon} on ${fresh.ports.public} ` +
             `(pid ${fresh.kingPid})\n  pier ${pierPath}\n`,
         );
-        process.stdout.write(
-          color(
-            'dim',
-            '\nnext: install %mcp on the moon, then add its endpoint to your agent config\n' +
-              '(minato does not install desks — see the README)\n',
-          ),
-        );
+        if (opts.mcp !== false) {
+          process.stdout.write('\n');
+          await tryInstallMcp(fresh, { moon: fresh.path, repo: opts.mcpRepo });
+        } else {
+          process.stdout.write(color('dim', '\nskipped %mcp install (--no-mcp)\n'));
+        }
         return EXIT_OK;
       }
     }
